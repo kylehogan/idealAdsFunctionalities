@@ -325,82 +325,80 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
     for pbar in progress_bars.values():
         pbar.close()
 
-adA = Advertisement(identifier=3, content=[1,0,1], targetAudience=[1,1,1], campaignID=5)
-adB = Advertisement(identifier=8, content=[1,0,0], targetAudience=[1,1,0], campaignID=5)
+if __name__ == "__main__":
 
-campaign = Campaign(identifier=5, adA=adA, adB=adB, campaignAudience=[1,1,0])
+    adA = Advertisement(identifier=3, content=[1,0,1], targetAudience=[1,1,1], campaignID=5)
+    adB = Advertisement(identifier=8, content=[1,0,0], targetAudience=[1,1,0], campaignID=5)
 
-#we aren't using the context for targeting and engagement right now
-website1 = Website(identifier=15, siteFeatures=[1,0,1])
-website2 = Website(identifier=30, siteFeatures=[1,1,0])
+    campaign = Campaign(identifier=5, adA=adA, adB=adB, campaignAudience=[1,1,0])
 
-
-parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
-parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
-parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
-parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
-parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
-parser.add_argument("--plots_only", help="if true, only produce plots and not samples", action='store_true')
-
-args = parser.parse_args()
-
-campaign_size = 100000
-trials = args.trials
-cores=args.cores
-num_chunks = cores*2
-alt_probs = args.alt_probs  # Marginal probabilities for the test bit
-null_prob = 0.9
-direction = 'left'
-
-plot_type = args.plot_type
-
-print(alt_probs)
+    #we aren't using the context for targeting and engagement right now
+    website1 = Website(identifier=15, siteFeatures=[1,0,1])
+    website2 = Website(identifier=30, siteFeatures=[1,1,0])
 
 
-match plot_type:
-    case 'private_v_nonprivate':    
-        #make a plot for game: realistic non-private, realistic private, baseline
-        alpha_targeting_values = [0.9, 0.6, 1]
-        alpha_engagement_values = [0.2, 0.2, 1]   
-        epsilons = [(0,f_metrics), (0.1,f_metrics_dp_ep01), (0,f_metrics)]
-        filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate.parquet'
-        filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
-    case 'targeting':
-        #make a plot for game: vary only alpha-targeting
-        alpha_targeting_values = [0.1, 0.5, 0.9, 1]
-        alpha_engagement_values = [1, 1, 1, 1]   
-        epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-        filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting.parquet'
-        filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting_metadata.parquet'
-    case 'epsilon':
-        #make a plot for game: vary only epsilon
-        alpha_targeting_values = [1, 1, 1, 1]
-        alpha_engagement_values = [1, 1, 1, 1]
-        epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]
-        filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon.parquet'
-        filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon_metadata.parquet'
-    case 'engagement':  
-        #make a plot for game: vary only alpha-engagement
-        alpha_targeting_values = [1, 1, 1, 1]
-        alpha_engagement_values = [0.1, 0.5, 0.9, 1]
-        epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-        filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement.parquet'
-        filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement_metadata.parquet'
+    parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
+    parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
+    parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
+    parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
+    parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
+    parser.add_argument("--plots_only", help="if true, only produce plots and not samples", action='store_true')
 
-if not args.plots_only:
-    runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
-                                trials=trials, 
-                                campaign_size=campaign_size, 
-                                null_prob=null_prob, 
-                                alpha_targeting_values=alpha_targeting_values,
-                                alpha_engagement_values=alpha_engagement_values, 
-                                epsilons=epsilons,
-                                direction='left',
-                                alt_probs=alt_probs,
-                                num_processes=cores,
-                                num_chunks=num_chunks,
-                                filename=filename)
+    args = parser.parse_args()
 
-clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type)
-plotNumSamples(clicks_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=False, null_pr=null_prob)
+    campaign_size = 100000
+    trials = args.trials
+    cores=args.cores
+    num_chunks = cores*2
+    alt_probs = args.alt_probs  # Marginal probabilities for the test bit
+    null_prob = 0.9
+    direction = 'left'
 
+    plot_type = args.plot_type
+
+    match plot_type:
+        case 'private_v_nonprivate':    
+            #make a plot for game: realistic non-private, realistic private, baseline
+            alpha_targeting_values = [0.9, 0.6, 1]
+            alpha_engagement_values = [0.2, 0.2, 1]   
+            epsilons = [(0,f_metrics), (0.1,f_metrics_dp_ep01), (0,f_metrics)]
+            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate.parquet'
+            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
+        case 'targeting':
+            #make a plot for game: vary only alpha-targeting
+            alpha_targeting_values = [0.1, 0.5, 0.9, 1]
+            alpha_engagement_values = [1, 1, 1, 1]   
+            epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
+            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting.parquet'
+            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting_metadata.parquet'
+        case 'epsilon':
+            #make a plot for game: vary only epsilon
+            alpha_targeting_values = [1, 1, 1, 1]
+            alpha_engagement_values = [1, 1, 1, 1]
+            epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]
+            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon.parquet'
+            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon_metadata.parquet'
+        case 'engagement':  
+            #make a plot for game: vary only alpha-engagement
+            alpha_targeting_values = [1, 1, 1, 1]
+            alpha_engagement_values = [0.1, 0.5, 0.9, 1]
+            epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
+            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement.parquet'
+            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement_metadata.parquet'
+
+    if not args.plots_only:
+        runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
+                                    trials=trials, 
+                                    campaign_size=campaign_size, 
+                                    null_prob=null_prob, 
+                                    alpha_targeting_values=alpha_targeting_values,
+                                    alpha_engagement_values=alpha_engagement_values, 
+                                    epsilons=epsilons,
+                                    direction='left',
+                                    alt_probs=alt_probs,
+                                    num_processes=cores,
+                                    num_chunks=num_chunks,
+                                    filename=filename)
+
+    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type)
+    plotNumSamples(clicks_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=False, null_pr=null_prob)

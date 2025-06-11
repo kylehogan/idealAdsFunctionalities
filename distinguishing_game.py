@@ -27,6 +27,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                              alpha_engagement_values = [0.1,0.5,0.9,1],
                                              epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)],
                                              delta=0,
+                                             direction='left',
                                              progress_callback=None):
 
     # Generate all boolean arrays of length 3
@@ -261,6 +262,7 @@ def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2,
             alpha_targeting_values=alpha_targeting_values,
             alpha_engagement_values=alpha_engagement_values,
             epsilons=epsilons,
+            direction=direction,
             progress_callback=progress_callback
         )
     return alt_prob, len(trial_chunk)
@@ -394,7 +396,7 @@ if __name__ == "__main__":
                                     alpha_targeting_values=alpha_targeting_values,
                                     alpha_engagement_values=alpha_engagement_values, 
                                     epsilons=epsilons,
-                                    direction='left',
+                                    direction=direction,
                                     alt_probs=alt_probs,
                                     num_processes=cores,
                                     num_chunks=num_chunks,

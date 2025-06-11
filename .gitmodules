@@ -1,0 +1,6 @@
+[submodule "bindata"]
+	path = bindata
+	url = git@github.com:kylehogan/bindata.git
+[submodule "binomialdpy"]
+	path = binomialdpy
+	url = git@github.com:kylehogan/binomialdpy.git

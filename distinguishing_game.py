@@ -14,6 +14,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 import matplotlib.pyplot as plt
 import argparse
+from os import makedirs, path
+from collections import defaultdict
 
 
 
@@ -69,7 +71,8 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                             commonprob=commonprob_eco1, N=n)
 
     unique_users, counts = np.unique(user_dist_eco1, axis=0, return_counts=True)
-    userProb_eco1 = dict(zip(map(tuple, unique_users), counts/n))
+    userProb_eco1 = defaultdict(float)
+    userProb_eco1.update(dict(zip(map(tuple, unique_users), counts/n)))
 
     combo = zip(alpha_targeting_values,alpha_engagement_values,epsilons)
 
@@ -83,7 +86,8 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                 commonprob=commonprob_eco2, N=n)
 
         unique_users, counts = np.unique(user_dist_eco2, axis=0, return_counts=True)
-        userProb_eco2 = dict(zip(map(tuple, unique_users), counts/n))
+        userProb_eco2 = defaultdict(float)
+        userProb_eco2.update(dict(zip(map(tuple, unique_users), counts/n)))
 
         for alpha_targeting, alpha_engagement, epsilon in combo:
             #theoretical probabilities for metadata table
@@ -174,11 +178,14 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
     filename_metadata = filename.replace('.parquet', '_metadata.parquet')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
 
-def plotNumSamples(pval_df, direction='left', combo=[], st_dev = True, null_pr=0.5):
+def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = True, null_pr=0.5, directory='plots/', plot_type='private_v_nonprivate'):
     # Initialize a figure
     plt.figure(figsize=(12, 8))
 
     colors = ["#e27c7c", "#a86464", "#6d4b4b", "#503f3f"]
+    markers = ['o', 's', 'd', '^']
+    if plot_type == 'private_v_nonprivate':
+        labels = ['Non-Private', 'Private', 'Baseline']
 
     for entry in combo:
         alpha_targeting = entry[0]
@@ -189,7 +196,7 @@ def plotNumSamples(pval_df, direction='left', combo=[], st_dev = True, null_pr=0
 
         # Plot private mean and standard deviation for each alpha
         plt_color = colors.pop(0)
-        plt.plot(means.index, means, label=f'Private Mean (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})', color=plt_color, marker='o')
+        plt.plot(means.index, means, marker=markers.pop(0), label=f'{labels.pop(0)} (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})', color=plt_color)
         if st_dev:
             private_stds = results.std(axis=0)
             plt.fill_between(
@@ -200,23 +207,25 @@ def plotNumSamples(pval_df, direction='left', combo=[], st_dev = True, null_pr=0
                 alpha=0.2,
                 label=f'Private Std Dev (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})'
             )
-    # Add labels, legend, and title
-    if direction == 'left':
-        plt.xlabel(f'Marginal probability of test bit (null has pr = {null_pr})')
-    else:
-        plt.xlabel(f'Marginal probability of test bit (null has pr = {null_pr})')
-    plt.ylabel('# samples')
-    plt.title(f'Number of samples till p-value < 0.05') 
+    # Set x-ticks to alt_probs and label with TVD from metadata_df
+    alt_probs = means.index
+    # Get TVD values for the first alpha_targeting/alpha_engagement in combo (assumes TVD is the same for all combos at each alt_prob)
+    tvd_labels = [f"{metadata_df.loc[(alt_prob, combo[0][0], combo[0][1]), 'tvd']:.3f}" for alt_prob in alt_probs]
+    plt.xticks(ticks=alt_probs, labels=tvd_labels)
+    plt.xlabel(f'Total Variation Distance (TVD) between D0 and D1')
+
+    plt.ylabel('Number of Samples')
+    plt.title(f'Campaign Size Required to Distinguish') 
     plt.yscale('log')
     plt.legend()
     plt.grid()
     plt.tight_layout()
 
     # Show the plot
-    plt.savefig(f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}.png')
+    plt.savefig(f'{directory}/pval_{direction}_{plot_type}.png')
     plt.show()
 
-def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate'):
+def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
 
     altprob_dfs = []
 
@@ -234,8 +243,8 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
 
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
     metadata_df = pd.concat([pd.read_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}")) for alt_prob in alt_probs], verify_integrity=True)
-    filename = f'datasets/userDist/data/plots/pval_{datetime.date.today()}' + plot_type + '_combined.parquet'
-    filename_metadata = f'datasets/userDist/data/plots/pval_{datetime.date.today()}' + plot_type + 'combined_metadata.parquet'
+    filename = f'{directory}/pval_' + plot_type + '_combined.parquet'
+    filename_metadata = f'{directory}/pval_' + plot_type + 'combined_metadata.parquet'
     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
     return clicks_df, metadata_df
@@ -338,6 +347,20 @@ if __name__ == "__main__":
     website1 = Website(identifier=15, siteFeatures=[1,0,1])
     website2 = Website(identifier=30, siteFeatures=[1,1,0])
 
+    # Format the date as a string (e.g., "2025-06-18")
+    folder_name = datetime.date.today().strftime("%Y-%m-%d")
+    #folder_name = '2025-06-11'
+
+    # Define the path for the new folder
+    # You can change '.' to a specific path if you want to create the folder elsewhere
+    new_folder_path = path.join('plots/', folder_name)
+
+    # Create the folder
+    try:
+        makedirs(new_folder_path, exist_ok=True)
+    except OSError as e:
+        print(f"Error creating folder: {e}")
+
 
     parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
     parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
@@ -364,29 +387,31 @@ if __name__ == "__main__":
             alpha_targeting_values = [0.9, 0.6, 1]
             alpha_engagement_values = [0.2, 0.2, 1]   
             epsilons = [(0,f_metrics), (0.1,f_metrics_dp_ep01), (0,f_metrics)]
-            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate.parquet'
-            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
+            # filename = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_private_v_nonprivate.parquet'
+            # filename_metadata = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
+            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate.parquet'
+            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
         case 'targeting':
             #make a plot for game: vary only alpha-targeting
             alpha_targeting_values = [0.1, 0.5, 0.9, 1]
             alpha_engagement_values = [1, 1, 1, 1]   
             epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting.parquet'
-            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_targeting_metadata.parquet'
+            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_targeting.parquet'
+            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_targeting_metadata.parquet'
         case 'epsilon':
             #make a plot for game: vary only epsilon
             alpha_targeting_values = [1, 1, 1, 1]
             alpha_engagement_values = [1, 1, 1, 1]
             epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]
-            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon.parquet'
-            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_epsilon_metadata.parquet'
+            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_epsilon.parquet'
+            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_epsilon_metadata.parquet'
         case 'engagement':  
             #make a plot for game: vary only alpha-engagement
             alpha_targeting_values = [1, 1, 1, 1]
             alpha_engagement_values = [0.1, 0.5, 0.9, 1]
             epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-            filename = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement.parquet'
-            filename_metadata = f'datasets/userDist/data/plots/pval_{direction}_{datetime.date.today()}_altprob_trial_subset_engagement_metadata.parquet'
+            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_engagement.parquet'
+            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_engagement_metadata.parquet'
 
     if not args.plots_only:
         runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
@@ -402,5 +427,5 @@ if __name__ == "__main__":
                                     num_chunks=num_chunks,
                                     filename=filename)
 
-    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type)
-    plotNumSamples(clicks_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=False, null_pr=null_prob)
+    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path)
+    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=False, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)

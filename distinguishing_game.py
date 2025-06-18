@@ -181,11 +181,21 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
 def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = True, null_pr=0.5, directory='plots/', plot_type='private_v_nonprivate'):
     # Initialize a figure
     plt.figure(figsize=(12, 8))
+    plt.rcParams['font.size'] = 16
 
-    colors = ["#e27c7c", "#a86464", "#6d4b4b", "#503f3f"]
-    markers = ['o', 's', 'd', '^']
-    if plot_type == 'private_v_nonprivate':
-        labels = ['Non-Private', 'Private', 'Baseline']
+    colors = ["#e27c7c", "#a86464", '#8B5757', "#6d4b4b", "#503f3f"]
+    markers = ['o', 's', 'd', '^', 'D']
+    match plot_type:
+        case 'private_v_nonprivate':
+            colors = ["#e27c7c", "#a86464", "#6d4b4b", "#503f3f"]
+            linetype = ['Private', 'Non-Private', 'Baseline'] 
+            labels = [f'{linetype} (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})' for (alpha_targeting, alpha_engagement, epsilon), linetype in zip(combo, linetype)]
+        case 'targeting':
+            labels = [f'α_targeting={alpha}' for alpha, _, _ in combo]
+        case 'epsilon':
+            labels = [f'ε={epsilon}' for _, _, epsilon in combo]
+        case 'engagement':
+            labels = [f'α_engagement={alpha}' for _, alpha, _ in combo]
 
     for entry in combo:
         alpha_targeting = entry[0]
@@ -196,7 +206,7 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
 
         # Plot private mean and standard deviation for each alpha
         plt_color = colors.pop(0)
-        plt.plot(means.index, means, marker=markers.pop(0), label=f'{labels.pop(0)} (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})', color=plt_color)
+        plt.plot(means.index, means, marker=markers.pop(0), label=labels.pop(0), color=plt_color)
         if st_dev:
             private_stds = results.std(axis=0)
             plt.fill_between(
@@ -222,7 +232,7 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
     plt.tight_layout()
 
     # Show the plot
-    plt.savefig(f'{directory}/pval_{direction}_{plot_type}.png')
+    plt.savefig(f'{directory}/pval_{direction}_{plot_type}.svg', format='svg')
     plt.show()
 
 def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
@@ -348,8 +358,8 @@ if __name__ == "__main__":
     website2 = Website(identifier=30, siteFeatures=[1,1,0])
 
     # Format the date as a string (e.g., "2025-06-18")
-    folder_name = datetime.date.today().strftime("%Y-%m-%d")
-    #folder_name = '2025-06-11'
+    #folder_name = datetime.date.today().strftime("%Y-%m-%d")
+    folder_name = '2025-06-11'
 
     # Define the path for the new folder
     # You can change '.' to a specific path if you want to create the folder elsewhere
@@ -367,7 +377,8 @@ if __name__ == "__main__":
     parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
     parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
     parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
-    parser.add_argument("--plots_only", help="if true, only produce plots and not samples", action='store_true')
+    parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
+    parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
 
     args = parser.parse_args()
 
@@ -381,37 +392,33 @@ if __name__ == "__main__":
 
     plot_type = args.plot_type
 
+    filename = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_{plot_type}_metadata.parquet'
+            
+
     match plot_type:
         case 'private_v_nonprivate':    
             #make a plot for game: realistic non-private, realistic private, baseline
-            alpha_targeting_values = [0.9, 0.6, 1]
+            alpha_targeting_values = [0.6, 0.9, 1]
             alpha_engagement_values = [0.2, 0.2, 1]   
-            epsilons = [(0,f_metrics), (0.1,f_metrics_dp_ep01), (0,f_metrics)]
-            # filename = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_private_v_nonprivate.parquet'
-            # filename_metadata = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
-            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate.parquet'
-            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
+            epsilons = [(0.1,f_metrics_dp_ep01), (0,f_metrics), (0,f_metrics)]
+            # filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate.parquet'
+            # filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
         case 'targeting':
             #make a plot for game: vary only alpha-targeting
-            alpha_targeting_values = [0.1, 0.5, 0.9, 1]
-            alpha_engagement_values = [1, 1, 1, 1]   
-            epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_targeting.parquet'
-            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_targeting_metadata.parquet'
+            alpha_targeting_values = [0.05, 0.1, 0.5, 0.9, 1]
+            alpha_engagement_values = [1] * len(alpha_targeting_values)  
+            epsilons = [(0,f_metrics)] * len(alpha_targeting_values)
         case 'epsilon':
             #make a plot for game: vary only epsilon
-            alpha_targeting_values = [1, 1, 1, 1]
-            alpha_engagement_values = [1, 1, 1, 1]
             epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]
-            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_epsilon.parquet'
-            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_epsilon_metadata.parquet'
+            alpha_targeting_values = [1] * len(epsilons)
+            alpha_engagement_values = [1] * len(epsilons)
         case 'engagement':  
             #make a plot for game: vary only alpha-engagement
-            alpha_targeting_values = [1, 1, 1, 1]
             alpha_engagement_values = [0.1, 0.5, 0.9, 1]
-            epsilons = [(0,f_metrics), (0,f_metrics), (0,f_metrics), (0,f_metrics)]
-            filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_engagement.parquet'
-            filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_engagement_metadata.parquet'
+            alpha_targeting_values = [1] * len(alpha_engagement_values)
+            epsilons = [(0,f_metrics)] * len(alpha_engagement_values)
 
     if not args.plots_only:
         runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
@@ -428,4 +435,4 @@ if __name__ == "__main__":
                                     filename=filename)
 
     clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path)
-    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=False, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
+    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)

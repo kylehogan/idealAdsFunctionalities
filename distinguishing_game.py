@@ -14,7 +14,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
 import matplotlib.pyplot as plt
 import argparse
-from os import makedirs, path
+from os import makedirs, path, listdir
 from collections import defaultdict
 
 
@@ -43,19 +43,28 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
     n = 100000 #for pr dist of users
     commonprob_eco1 = bnd.bincorr2commonprob(margprob=margprobEco1, bincorr=corr)
 
-    # Update multiindex to include margprob, alpha_targeting, and range(campaign_size)
     array_multiindex = pd.MultiIndex.from_arrays(
-        [alpha_targeting_values,
-            alpha_engagement_values,
-            [ep[0] for ep in epsilons]], 
-            names=['alpha_targeting', 'alpha_engagement', 'epsilon'])
+            [alpha_targeting_values,
+                alpha_engagement_values,
+                [ep[0] for ep in epsilons]], 
+                names=['alpha_targeting', 'alpha_engagement', 'epsilon'])
 
-    #add the trials to index without creatign all combinations of alpha targeting, engagement, and epsilon
+    #add the trials to index without creating all combinations of alpha targeting, engagement, and epsilon
     multiindex = pd.MultiIndex.from_frame(array_multiindex.to_frame().merge(pd.Series(trials, name="trial"), how='cross'))
 
-    # Initialize DataFrames with the updated multiindex and trials as columns
-    pval_df = pd.DataFrame(index=multiindex, columns=alt_probs, dtype=int)
-    pval_df.sort_index(inplace=True)
+    #allow for adding new data or overwriting only some data without recomputing everything
+    if path.exists(filename):
+        pval_df = pd.read_parquet(filename, engine='pyarrow')
+        # Ensure the index is the union of the current index and multiindex
+        pval_df = pval_df.reindex(pval_df.index.union(multiindex, sort=True))
+        # Add new columns for any alt_prob not already present
+        for alt_prob in alt_probs:
+            if alt_prob not in pval_df.columns:
+                pval_df[alt_prob] = pd.NA
+    else:
+        # Initialize DataFrames with the updated multiindex
+        pval_df = pd.DataFrame(index=multiindex, columns=alt_probs, dtype=int)
+        pval_df.sort_index(inplace=True)
 
     multiindex = pd.MultiIndex.from_product(
         [alt_probs,
@@ -125,7 +134,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
             for trial in trials:
                 #resample the users for each trial
                 user_dist_eco2 = bnd.rmvbin(margprob=np.diag(commonprob_eco2), 
-                                commonprob=commonprob_eco2, N=n)
+                                commonprob=commonprob_eco2, N=campaign_size)
 
                 ecosystem2 = AdsEcosystem(
                         dist = user_dist_eco2.tolist(),
@@ -175,7 +184,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                     progress_callback()
 
     pval_df.to_parquet(filename, engine='pyarrow', compression='snappy')
-    filename_metadata = filename.replace('.parquet', '_metadata.parquet')
+    filename_metadata = filename.replace('/pval', '/metadata/pval')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
 
 def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = True, null_pr=0.5, directory='plots/', plot_type='private_v_nonprivate'):
@@ -236,28 +245,53 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
     plt.show()
 
 def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
-
+    # Concatenate all found files
     altprob_dfs = []
-
+    #combine all trials for each alt_prob
     for alt_prob in alt_probs:
-        # Read and concatenate all trial subset DataFrames
-        combined_df = pd.concat(
-            [pd.read_parquet(filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subset[0]}_{trial_subset[-1]}")) for trial_subset in trial_subsets],
+        combined_df = pd.concat([pd.read_parquet(f"{directory}/{f}") for f in listdir(directory) if f.endswith('.parquet') and "combined" not in f and f"altprob{alt_prob}_" in f],
             axis=0,  # Combine along the rows (index)
             verify_integrity=True
         )
-    
-        # Sort the index for consistency
         combined_df.sort_index(inplace=True)
         altprob_dfs.append(combined_df)
-
+    
+    #combine all alt_probs into one df
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
-    metadata_df = pd.concat([pd.read_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}")) for alt_prob in alt_probs], verify_integrity=True)
-    filename = f'{directory}/pval_' + plot_type + '_combined.parquet'
-    filename_metadata = f'{directory}/pval_' + plot_type + 'combined_metadata.parquet'
+
+    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}" in f]
+    metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
+
+    filename = f'{directory}/pval_combined.parquet'
+    filename_metadata = f'{directory}/metadata/pval_combined_metadata.parquet'
     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
     return clicks_df, metadata_df
+
+
+# def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
+
+#     altprob_dfs = []
+
+#     for alt_prob in alt_probs:
+#         # Read and concatenate all trial subset DataFrames
+#         combined_df = pd.concat(
+#             [pd.read_parquet(filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subset[0]}_{trial_subset[-1]}")) for trial_subset in trial_subsets],
+#             axis=0,  # Combine along the rows (index)
+#             verify_integrity=True
+#         )
+    
+#         # Sort the index for consistency
+#         combined_df.sort_index(inplace=True)
+#         altprob_dfs.append(combined_df)
+
+#     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
+#     metadata_df = pd.concat([pd.read_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}")) for alt_prob in alt_probs], verify_integrity=True)
+#     filename = f'{directory}/pval_' + plot_type + '_combined.parquet'
+#     filename_metadata = f'{directory}/pval_' + plot_type + 'combined_metadata.parquet'
+#     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
+#     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
+#     return clicks_df, metadata_df
 
 def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2, campaign_size, null_prob, alpha_targeting_values, alpha_engagement_values, epsilons, direction, filename):
     """
@@ -357,19 +391,9 @@ if __name__ == "__main__":
     website1 = Website(identifier=15, siteFeatures=[1,0,1])
     website2 = Website(identifier=30, siteFeatures=[1,1,0])
 
-    # Format the date as a string (e.g., "2025-06-18")
-    #folder_name = datetime.date.today().strftime("%Y-%m-%d")
-    folder_name = '2025-06-11'
-
-    # Define the path for the new folder
-    # You can change '.' to a specific path if you want to create the folder elsewhere
-    new_folder_path = path.join('plots/', folder_name)
-
-    # Create the folder
-    try:
-        makedirs(new_folder_path, exist_ok=True)
-    except OSError as e:
-        print(f"Error creating folder: {e}")
+    # # Format the date as a string (e.g., "2025-06-18")
+    # folder_name = datetime.date.today().strftime("%Y-%m-%d")
+    # #folder_name = '2025-06-11'
 
 
     parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
@@ -382,7 +406,17 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    campaign_size = 100000
+    # Define the path for the new folder
+    new_folder_path = path.join('plots/', args.plot_type)
+
+    # Create the folder
+    try:
+        makedirs(new_folder_path, exist_ok=True)
+        makedirs(f'{new_folder_path}/metadata', exist_ok=True)
+    except OSError as e:
+        print(f"Error creating folder: {e}")
+
+    campaign_size = 200000
     trials = args.trials
     cores=args.cores
     num_chunks = cores*2
@@ -392,8 +426,8 @@ if __name__ == "__main__":
 
     plot_type = args.plot_type
 
-    filename = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/pval_{direction}_{folder_name}_altprob_trial_subset_{plot_type}_metadata.parquet'
+    filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_{plot_type}_metadata.parquet'
             
 
     match plot_type:
@@ -416,7 +450,8 @@ if __name__ == "__main__":
             alpha_engagement_values = [1] * len(epsilons)
         case 'engagement':  
             #make a plot for game: vary only alpha-engagement
-            alpha_engagement_values = [0.1, 0.5, 0.9, 1]
+            #alpha_engagement_values = [0.05, 0.1, 0.5, 0.9, 1]
+            alpha_engagement_values = [0.1]
             alpha_targeting_values = [1] * len(alpha_engagement_values)
             epsilons = [(0,f_metrics)] * len(alpha_engagement_values)
 

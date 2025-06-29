@@ -244,7 +244,7 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
     plt.savefig(f'{directory}/pval_{direction}_{plot_type}.svg', format='svg')
     plt.show()
 
-def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
+def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/', campaign_size=200000):
     # Concatenate all found files
     altprob_dfs = []
     #combine all trials for each alt_prob
@@ -262,19 +262,19 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     # Count number of trials for first three levels of index where value is max, for each column
     if isinstance(clicks_df.index, pd.MultiIndex) and clicks_df.index.nlevels >= 4:
         max_val = clicks_df.max().max()
+        print(f"Max value across entire DataFrame: {max_val}")
         print("Number of trials (level 3) where value == max for each (alpha_targeting, alpha_engagement, epsilon), per column:")
         for col in clicks_df.columns:
             print(f"  Column: {col}")
             for idx in clicks_df.index.droplevel(-1).unique():
-                mask = (clicks_df.loc[idx, col] == max_val)
+                mask = (clicks_df.loc[idx, col] == campaign_size)
                 # mask is a Series indexed by trial
                 count = mask.sum()
                 print(f"    {idx}: {count}")
     else:
         print("Index is not a MultiIndex with at least 4 levels; skipping detailed count.")
 
-
-    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}" in f]
+    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
 
     filename = f'{directory}/pval_combined.parquet'
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     campaign_size = 200000
     trials = args.trials
     cores=args.cores
-    num_chunks = cores*6
+    num_chunks = cores*10
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = 0.9
     direction = 'left'
@@ -489,5 +489,5 @@ if __name__ == "__main__":
                                     num_chunks=num_chunks,
                                     filename=filename)
 
-    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path)
+    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path, campaign_size=campaign_size)
     plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)

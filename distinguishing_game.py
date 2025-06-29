@@ -259,6 +259,21 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     #combine all alt_probs into one df
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
 
+    # Count number of trials for first three levels of index where value is max, for each column
+    if isinstance(clicks_df.index, pd.MultiIndex) and clicks_df.index.nlevels >= 4:
+        max_val = clicks_df.max().max()
+        print("Number of trials (level 3) where value == max for each (alpha_targeting, alpha_engagement, epsilon), per column:")
+        for col in clicks_df.columns:
+            print(f"  Column: {col}")
+            for idx in clicks_df.index.droplevel(-1).unique():
+                mask = (clicks_df.loc[idx, col] == max_val)
+                # mask is a Series indexed by trial
+                count = mask.sum()
+                print(f"    {idx}: {count}")
+    else:
+        print("Index is not a MultiIndex with at least 4 levels; skipping detailed count.")
+
+
     metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}" in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
 
@@ -321,7 +336,8 @@ def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2,
     return alt_prob, len(trial_chunk)
 
 def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
-                                        trials=0, 
+                                        trials=0,
+                                        trial_start=0, 
                                         campaign_size=0, 
                                         null_prob=0.5, 
                                         alpha_targeting_values=[], 
@@ -333,7 +349,7 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
                                         num_chunks=16,
                                         filename=''):
     # Divide trials into 20 fixed chunks
-    trial_chunks = np.array_split(range(trials), num_chunks)
+    trial_chunks = np.array_split(range(trial_start, trial_start+trials), num_chunks)
 
     # Initialize progress bars for each alt_prob
     progress_bars = {
@@ -403,6 +419,8 @@ if __name__ == "__main__":
     parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
     parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
     parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
+    parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
+
 
     args = parser.parse_args()
 
@@ -423,6 +441,7 @@ if __name__ == "__main__":
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = 0.9
     direction = 'left'
+    trial_start = args.trial_start
 
     plot_type = args.plot_type
 
@@ -450,14 +469,15 @@ if __name__ == "__main__":
             alpha_engagement_values = [1] * len(epsilons)
         case 'engagement':  
             #make a plot for game: vary only alpha-engagement
-            #alpha_engagement_values = [0.05, 0.1, 0.5, 0.9, 1]
-            alpha_engagement_values = [0.1]
+            alpha_engagement_values = [0.1, 0.5, 0.9, 1]
+            #alpha_engagement_values = [0.1]
             alpha_targeting_values = [1] * len(alpha_engagement_values)
             epsilons = [(0,f_metrics)] * len(alpha_engagement_values)
 
     if not args.plots_only:
         runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
-                                    trials=trials, 
+                                    trials=trials,
+                                    trial_start=trial_start, 
                                     campaign_size=campaign_size, 
                                     null_prob=null_prob, 
                                     alpha_targeting_values=alpha_targeting_values,

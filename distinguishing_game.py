@@ -437,7 +437,7 @@ if __name__ == "__main__":
     campaign_size = 200000
     trials = args.trials
     cores=args.cores
-    num_chunks = cores*2
+    num_chunks = cores*6
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = 0.9
     direction = 'left'

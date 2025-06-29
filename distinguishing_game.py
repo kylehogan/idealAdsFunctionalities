@@ -434,7 +434,7 @@ if __name__ == "__main__":
     except OSError as e:
         print(f"Error creating folder: {e}")
 
-    campaign_size = 200000
+    campaign_size = 1000000
     trials = args.trials
     cores=args.cores
     num_chunks = cores*10

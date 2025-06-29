@@ -16,8 +16,16 @@ import matplotlib.pyplot as plt
 import argparse
 from os import makedirs, path, listdir
 from collections import defaultdict
+import logging
 
-
+# Set up error logging to file
+logging.basicConfig(
+    filename='distinguishing_game_errors.log',
+    filemode='a',
+    level=logging.ERROR,
+    format='%(asctime)s %(levelname)s:%(message)s'
+)
+logger = logging.getLogger(__name__)
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             filename='', 
@@ -177,7 +185,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                         else:
                             pval = binomtest(k=int(clicks), n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], alternative='greater').pvalue
 
-                    if pval <= 0.05:
+                    if pval <= 0.05 and clicks > 0:
                         pval_df.loc[(alpha_targeting, alpha_engagement, epsilon[0], trial), alt_prob] = userID
                         break
                 if progress_callback:
@@ -267,12 +275,15 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
         for col in clicks_df.columns:
             print(f"  Column: {col}")
             for idx in clicks_df.index.droplevel(-1).unique():
-                mask = (clicks_df.loc[idx, col] == campaign_size)
+                mask = (clicks_df.loc[idx, col] == 0)
                 # mask is a Series indexed by trial
                 count = mask.sum()
                 print(f"    {idx}: {count}")
     else:
         print("Index is not a MultiIndex with at least 4 levels; skipping detailed count.")
+
+    clicks_df.loc[(0.6,0.2,0.1)].hist(bins=50, figsize=(10, 6))
+    plt.show()
 
     metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
@@ -437,7 +448,7 @@ if __name__ == "__main__":
     campaign_size = 1000000
     trials = args.trials
     cores=args.cores
-    num_chunks = cores*10
+    num_chunks = cores*5
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = 0.9
     direction = 'left'

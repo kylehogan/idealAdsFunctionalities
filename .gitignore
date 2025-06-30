@@ -2,3 +2,6 @@ __pycache__/
 *.png
 *.csv
 *.parquet
+plots/
+*.log
+plots_sequential/

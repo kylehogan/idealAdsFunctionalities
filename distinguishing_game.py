@@ -213,6 +213,8 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
             labels = [f'ε={epsilon}' for _, _, epsilon in combo]
         case 'engagement':
             labels = [f'α_engagement={alpha}' for _, alpha, _ in combo]
+        case 'test':
+            labels = [f'α_targeting={alpha_targeting}, α_engagement={alpha_engagement}, ε={epsilon}' for alpha_targeting, alpha_engagement, epsilon in combo]
 
     for entry in combo:
         alpha_targeting = entry[0]

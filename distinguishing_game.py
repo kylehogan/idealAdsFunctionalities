@@ -257,6 +257,7 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     altprob_dfs = []
     #combine all trials for each alt_prob
     for alt_prob in alt_probs:
+        print(f"Combining data for alt_prob: {alt_prob}")
         combined_df = pd.concat([pd.read_parquet(f"{directory}/{f}") for f in listdir(directory) if f.endswith('.parquet') and "combined" not in f and f"altprob{alt_prob}_" in f],
             axis=0,  # Combine along the rows (index)
             verify_integrity=True
@@ -275,14 +276,18 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
         for col in clicks_df.columns:
             print(f"  Column: {col}")
             for idx in clicks_df.index.droplevel(-1).unique():
-                mask = (clicks_df.loc[idx, col] == 0)
+                mask = (clicks_df.loc[idx, col] == campaign_size)  # Assuming max value is campaign_size
                 # mask is a Series indexed by trial
                 count = mask.sum()
                 print(f"    {idx}: {count}")
     else:
         print("Index is not a MultiIndex with at least 4 levels; skipping detailed count.")
 
-    clicks_df.loc[(0.6,0.2,0.1)].hist(bins=50, figsize=(10, 6))
+    print("NaN count per column in clicks_df:")
+    print(clicks_df.isna().sum())
+    print((clicks_df.loc[(1,1,0.1)] < 20).sum())  #count of values less than 20
+    print([clicks_df.loc[(1,1,0.1)][col].shape for col in clicks_df.columns]) #shape of each column for (0.1,1,0)
+    clicks_df.loc[(1,1,0.1)].hist(bins=50, figsize=(10, 6))
     plt.show()
 
     metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
@@ -293,31 +298,6 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
     return clicks_df, metadata_df
-
-
-# def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/'):
-
-#     altprob_dfs = []
-
-#     for alt_prob in alt_probs:
-#         # Read and concatenate all trial subset DataFrames
-#         combined_df = pd.concat(
-#             [pd.read_parquet(filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subset[0]}_{trial_subset[-1]}")) for trial_subset in trial_subsets],
-#             axis=0,  # Combine along the rows (index)
-#             verify_integrity=True
-#         )
-    
-#         # Sort the index for consistency
-#         combined_df.sort_index(inplace=True)
-#         altprob_dfs.append(combined_df)
-
-#     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
-#     metadata_df = pd.concat([pd.read_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_subsets[0][0]}_{trial_subsets[0][-1]}")) for alt_prob in alt_probs], verify_integrity=True)
-#     filename = f'{directory}/pval_' + plot_type + '_combined.parquet'
-#     filename_metadata = f'{directory}/pval_' + plot_type + 'combined_metadata.parquet'
-#     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
-#     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
-#     return clicks_df, metadata_df
 
 def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2, campaign_size, null_prob, alpha_targeting_values, alpha_engagement_values, epsilons, direction, filename):
     """
@@ -445,10 +425,10 @@ if __name__ == "__main__":
     except OSError as e:
         print(f"Error creating folder: {e}")
 
-    campaign_size = 1000000
+    campaign_size = 100000
     trials = args.trials
     cores=args.cores
-    num_chunks = cores*5
+    num_chunks = cores*2
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = 0.9
     direction = 'left'
@@ -470,7 +450,7 @@ if __name__ == "__main__":
             # filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_private_v_nonprivate_metadata.parquet'
         case 'targeting':
             #make a plot for game: vary only alpha-targeting
-            alpha_targeting_values = [0.05, 0.1, 0.5, 0.9, 1]
+            alpha_targeting_values = [0.1, 0.5, 0.9, 1]
             alpha_engagement_values = [1] * len(alpha_targeting_values)  
             epsilons = [(0,f_metrics)] * len(alpha_targeting_values)
         case 'epsilon':
@@ -484,6 +464,11 @@ if __name__ == "__main__":
             #alpha_engagement_values = [0.1]
             alpha_targeting_values = [1] * len(alpha_engagement_values)
             epsilons = [(0,f_metrics)] * len(alpha_engagement_values)
+        case "test":
+            alt_probs = [0.875]
+            alpha_targeting_values = [1]
+            alpha_engagement_values = [1]
+            epsilons = [(0.1,f_metrics_dp_ep01)]
 
     if not args.plots_only:
         runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 

@@ -4,10 +4,10 @@ import itertools
 from parameterizing_funcs import f_attribution, f_targeting, f_browsing, f_engagement, f_metrics, close, f_metrics_dp_ep001, f_metrics_dp_ep01, f_metrics_dp_ep1
 from adTypes import Advertisement, Website, Campaign
 from idealFunctionalities.idealAdsEcosystem import AdsEcosystem
-from binomialdpy import pvalue
+from pvalue import left as pvalue_left
+from pvalue import right as pvalue_right
 from scipy.stats import binomtest
 import pandas as pd
-import datetime
 import random
 from tqdm import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -16,16 +16,6 @@ import matplotlib.pyplot as plt
 import argparse
 from os import makedirs, path, listdir
 from collections import defaultdict
-import logging
-
-# Set up error logging to file
-logging.basicConfig(
-    filename='distinguishing_game_errors.log',
-    filemode='a',
-    level=logging.ERROR,
-    format='%(asctime)s %(levelname)s:%(message)s'
-)
-logger = logging.getLogger(__name__)
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             filename='', 
@@ -176,9 +166,9 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
                         if direction == 'left':
-                            pval = pvalue.left(clicks, n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], b=b, q=q)[0]
+                            pval = pvalue_left(clicks, n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], b=b, q=q)[0]
                         else:
-                            pval = pvalue.right(clicks, n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], b=b, q=q)[0]
+                            pval = pvalue_right(clicks, n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], b=b, q=q)[0]
                     else:
                         if direction == 'left':
                             pval = binomtest(k=int(clicks), n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], alternative='less').pvalue

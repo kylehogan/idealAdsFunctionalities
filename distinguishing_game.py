@@ -260,33 +260,24 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     #combine all alt_probs into one df
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
 
-    # Count number of trials for first three levels of index where value is max, for each column
-    if isinstance(clicks_df.index, pd.MultiIndex) and clicks_df.index.nlevels >= 4:
-        max_val = clicks_df.max().max()
-        print(f"Max value across entire DataFrame: {max_val}")
-        print("Number of trials (level 3) where value == max for each (alpha_targeting, alpha_engagement, epsilon), per column:")
-        for col in clicks_df.columns:
-            print(f"  Column: {col}")
-            for idx in clicks_df.index.droplevel(-1).unique():
-                mask = (clicks_df.loc[idx, col] == campaign_size)  # Assuming max value is campaign_size
-                # mask is a Series indexed by trial
-                count = mask.sum()
-                print(f"    {idx}: {count}")
-    else:
-        print("Index is not a MultiIndex with at least 4 levels; skipping detailed count.")
-
-    print("NaN count per column in clicks_df:")
-    print(clicks_df.isna().sum())
-    print((clicks_df.loc[(1,1,0.1)] < 20).sum())  #count of values less than 20
-    print([clicks_df.loc[(1,1,0.1)][col].shape for col in clicks_df.columns]) #shape of each column for (0.1,1,0)
-    clicks_df.loc[(1,1,0.1)].hist(bins=50, figsize=(10, 6))
-    plt.show()
+    print(f"Max value across entire DataFrame: {clicks_df.max().max()}")
+    print(f"NaN count per column in clicks_df: {clicks_df.isna().sum()}")
+    if plot_type == 'test':
+        print(f'count of values less than 20 {(clicks_df.loc[(1,1,0.1)] < 20).sum()}')  #count of values less than 20
+        print(f'shape of each column: {[clicks_df.loc[(1,1,0.1)][col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
+        clicks_df.loc[(1,1,0.1)].hist(bins=50, figsize=(10, 6))
+        plt.show()
+    elif plot_type == 'private_v_nonprivate':
+        print(f'count of values less than 20 {(clicks_df.loc[(0.6,0.2,0.1)] < 20).sum()}')
+        print(f'shape of each column: {[clicks_df.loc[(0.6,0.2,0.1)][col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
+        clicks_df.loc[(0.6,0.2,0.1)].hist(bins=50, figsize=(10, 6))
+        plt.show()
 
     metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
 
-    filename = f'{directory}/pval_combined.parquet'
-    filename_metadata = f'{directory}/metadata/pval_combined_metadata.parquet'
+    filename = f'{directory}/combined.parquet'
+    filename_metadata = f'{directory}/metadata/combined_metadata.parquet'
     clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
     return clicks_df, metadata_df
@@ -403,7 +394,8 @@ if __name__ == "__main__":
     parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
     parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
     parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
-
+    parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
+    parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
 
     args = parser.parse_args()
 
@@ -420,16 +412,16 @@ if __name__ == "__main__":
     campaign_size = 100000
     trials = args.trials
     cores=args.cores
-    num_chunks = cores*2
+    num_chunks = args.num_chunks
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
-    null_prob = 0.9
-    direction = 'left'
+    null_prob = args.null_prob  # Null marginal probability for the test bit
+    direction = 'left' if null_prob > max(alt_probs) else 'right'
     trial_start = args.trial_start
 
     plot_type = args.plot_type
 
-    filename = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/pval_{direction}_altprob_trial_subset_{plot_type}_metadata.parquet'
+    filename = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}_metadata.parquet'
             
 
     match plot_type:

@@ -4,31 +4,28 @@ import itertools
 from parameterizing_funcs import f_attribution, f_targeting, f_browsing, f_engagement, f_metrics, close, f_metrics_dp_ep001, f_metrics_dp_ep01, f_metrics_dp_ep1
 from adTypes import Advertisement, Website, Campaign
 from idealFunctionalities.idealAdsEcosystem import AdsEcosystem
-from binomialdpy.pvalue import left as pvalue_left
-from binomialdpy.pvalue import right as pvalue_right
+from pvalue import left as pvalue_left
+from pvalue import right as pvalue_right
 from scipy.stats import binomtest, binom
 import pandas as pd
 import random
-from tqdm import tqdm
-from concurrent.futures import ProcessPoolExecutor, as_completed
-import multiprocessing
 import matplotlib.pyplot as plt
 import argparse
 from os import makedirs, path, listdir
 from collections import defaultdict
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
-                                            filename='', 
-                                             trials=[], 
-                                             campaign_size=10, 
-                                             null_prob=0.1, 
-                                             alt_probs = [0.25, 0.5, 0.75], 
-                                             alpha_targeting_values = [0.1,0.5,0.9,1], 
-                                             alpha_engagement_values = [0.1,0.5,0.9,1],
-                                             epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)],
-                                             delta=0,
-                                             direction='left',
-                                             progress_callback=None):
+                                            filename='',
+                                            filename_metadata='', 
+                                            trials=10, 
+                                            campaign_size=10, 
+                                            null_prob=0.1, 
+                                            alt_probs = [0.25, 0.5, 0.75], 
+                                            alpha_targeting_values = [0.1,0.5,0.9,1], 
+                                            alpha_engagement_values = [0.1,0.5,0.9,1],
+                                            epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)],
+                                            delta=0,
+                                            direction='left'):
 
     # Generate all boolean arrays of length 3
     all_users = list(itertools.product([False, True], repeat=3))
@@ -84,7 +81,6 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
     combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
 
     for alt_prob in alt_probs:
-        #print(f"Processing for alt_prob: {alt_prob}")
         margprobEco2 = [0.2, 0.5, alt_prob]
 
         commonprob_eco2 = bnd.bincorr2commonprob(margprob=margprobEco2, bincorr=corr)
@@ -97,7 +93,6 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
         userProb_eco2.update(dict(zip(map(tuple, unique_users), counts/n)))
 
         for alpha_targeting, alpha_engagement, epsilon in combo:
-            #theoretical probabilities for metadata table
             totalUserProbEco1 = 0
             totalConvProbEco1 = 0
             totalUserProbEco2 = 0
@@ -129,7 +124,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                 metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA_null'] = totalConvProbEco1
 
             #empirical observations for clicks table
-            for trial in trials:
+            for trial in range(trials):
                 #resample the users for each trial
                 user_dist_eco2 = bnd.rmvbin(margprob=np.diag(commonprob_eco2), 
                                 commonprob=commonprob_eco2, N=campaign_size)
@@ -183,14 +178,18 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                             power = binom.sf(k_crit - 1, n, alt_prob)
                             pval = binomtest(k=int(clicks), n=userID+1, p=null_prob, alternative='greater').pvalue
                     
+                    if plot_type == "test":
+                        print("clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", alt_prob, "null pr: ", null_prob)
+
                     if pval <= 0.05 and power >= 0.8:
+                        #print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", "alt_prob: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"], "null pr: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"])
+
+                        # if plot_type == "test" and clicks > 0 and clicks < (userID + 1):
+                        #     pval_noep = binomtest(k=int(clicks), n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], alternative='less').pvalue 
+                        #     print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "pval_noep: ", pval_noep, "alt_prob: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"], "null pr: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"])
                         pval_df.loc[(alpha_targeting, alpha_engagement, epsilon[0], trial), alt_prob] = userID
                         break
-                if progress_callback:
-                    progress_callback()
-
     pval_df.to_parquet(filename, engine='pyarrow', compression='snappy')
-    filename_metadata = filename.replace('/nullprob', '/metadata/nullprob')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
 
 def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = True, null_pr=0.5, directory='plots/', plot_type='private_v_nonprivate'):
@@ -213,6 +212,7 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
             labels = [f'α_engagement={alpha}' for _, alpha, _ in combo]
         case 'test':
             labels = [f'α_targeting={alpha_targeting}, α_engagement={alpha_engagement}, ε={epsilon}' for alpha_targeting, alpha_engagement, epsilon in combo]
+
 
     for entry in combo:
         alpha_targeting = entry[0]
@@ -249,212 +249,7 @@ def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = Tr
     plt.tight_layout()
 
     # Show the plot
-    plt.savefig(f'{directory}/pval_{direction}_{plot_type}.svg', format='svg')
-    plt.show()
-
-def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/', campaign_size=200000):
-    # Concatenate all found files
-    altprob_dfs = []
-    #combine all trials for each alt_prob
-    for alt_prob in alt_probs:
-        print(f"Combining data for alt_prob: {alt_prob}")
-        combined_df = pd.concat([pd.read_parquet(f"{directory}/{f}") for f in listdir(directory) if f.endswith('.parquet') and "combined" not in f and f"altprob{alt_prob}_" in f],
-            axis=0,  # Combine along the rows (index)
-            verify_integrity=True
-        )
-        combined_df.sort_index(inplace=True)
-        altprob_dfs.append(combined_df)
-    
-    #combine all alt_probs into one df
-    clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
-
-    print(f"Max value across entire DataFrame: {clicks_df.max().max()}")
-    print(f"NaN count per column in clicks_df: {clicks_df.isna().sum()}")
-    if plot_type == 'test':
-        print(f'count of values less than 20 {(clicks_df < 20).sum()}')  #count of values less than 20
-        print(f'count of values less than 100 {(clicks_df < 100).sum()}') 
-        print(f'shape of each column: {[clicks_df[col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
-        clicks_df.hist(bins=100, figsize=(10, 6))
-        plt.show()
-        clicks_df[clicks_df < 50].hist(bins=50, figsize=(10, 6))
-        plt.show()
-    elif plot_type == 'private_v_nonprivate':
-        print(f'count of values less than 20 {(clicks_df.loc[(0.6,0.2,0.1)] < 20).sum()}')
-        print(f'count of values less than 100 {(clicks_df.loc[(0.6,0.2,0.1)] < 100).sum()}')
-        print(f'shape of each column: {[clicks_df.loc[(0.6,0.2,0.1)][col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
-        clicks_df.loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
-        plt.show()
-        clicks_df[clicks_df<500].loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
-        plt.show()
-
-    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
-    metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
-
-    filename = f'{directory}/combined.parquet'
-    filename_metadata = f'{directory}/metadata/combined_metadata.parquet'
-    clicks_df.to_parquet(filename, engine='pyarrow', compression='snappy')
-    metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
-    return clicks_df, metadata_df
-
-def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2, campaign_size, null_prob, alpha_targeting_values, alpha_engagement_values, epsilons, direction, filename):
-    """
-    Process a single chunk of trials for a given alt_prob.
-    """
-    with tqdm(total=len(trial_chunk) * len(alpha_targeting_values), desc=f"alt_prob={alt_prob}, trials={trial_chunk[0]}-{trial_chunk[-1]}", position=multiprocessing.current_process()._identity[0], leave=False) as pbar:
-        def progress_callback(*args, **kwargs):
-            pbar.update(1)
-
-        produceSampleComplexity(
-            campaign=campaign,
-            adA=adA,
-            adB=adB,
-            website1=website1,
-            website2=website2,
-            trials=list(trial_chunk),
-            campaign_size=campaign_size,
-            filename=filename,
-            null_prob=null_prob,
-            alt_probs=[alt_prob],
-            alpha_targeting_values=alpha_targeting_values,
-            alpha_engagement_values=alpha_engagement_values,
-            epsilons=epsilons,
-            direction=direction,
-            progress_callback=progress_callback
-        )
-    return alt_prob, len(trial_chunk)
-
-def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
-                                        trials=0,
-                                        trial_start=0, 
-                                        campaign_size=0, 
-                                        null_prob=0.5, 
-                                        alpha_targeting_values=[], 
-                                        alpha_engagement_values=[], 
-                                        epsilons=[], 
-                                        direction='left', 
-                                        alt_probs=[], 
-                                        num_processes=8,
-                                        num_chunks=16,
-                                        filename=''):
-    # Divide trials into 20 fixed chunks
-    trial_chunks = np.array_split(range(trial_start, trial_start+trials), num_chunks)
-
-    # Initialize progress bars for each alt_prob
-    progress_bars = {
-        alt_prob: tqdm(total=trials, desc=f"alt_prob={alt_prob}", position=i, leave=False)
-        for i, alt_prob in enumerate(alt_probs)
-    }
-
-    # Function to update progress bars
-    def update_progress(alt_prob, completed_trials):
-        progress_bars[alt_prob].update(completed_trials)
-
-    # Use ProcessPoolExecutor to process chunks dynamically
-    with ProcessPoolExecutor(max_workers=num_processes) as executor:
-        futures = []
-        for alt_prob in alt_probs:
-            for trial_chunk in trial_chunks:
-                filename_chunk = filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_chunk[0]}_{trial_chunk[-1]}")
-                futures.append(
-                    executor.submit(
-                        process_chunk,
-                        trial_chunk,
-                        alt_prob,
-                        campaign,
-                        adA,
-                        adB,
-                        website1,
-                        website2,
-                        campaign_size,
-                        null_prob,
-                        alpha_targeting_values,
-                        alpha_engagement_values,
-                        epsilons,
-                        direction,
-                        filename_chunk
-                    )
-                )
-
-        # Wait for all tasks to complete and update progress bars
-        for future in tqdm(as_completed(futures), desc="Processing all chunks", leave=False):
-            alt_prob, completed_trials = future.result()
-            update_progress(alt_prob, completed_trials)
-
-    # Close all progress bars
-    for pbar in progress_bars.values():
-        pbar.close()
-
-def plot_binomial_power_curve_subplots(alt_probs, alpha=0.05, max_samples=500, step=1, metadata_df=None, alpha_targeting=0.5, alpha_engagement=0.5):
-    """
-    Plot power vs. number of samples for a binomial test comparing each alt_prob to null_prob as subplots.
-    """
-    num_probs = len(alt_probs)
-    fig, axes = plt.subplots(1, num_probs, figsize=(6 * num_probs, 5), sharey=True)
-    if num_probs == 1:
-        axes = [axes]
-    ns = np.arange(1, max_samples + 1, step)
-    for i, alt_prob in enumerate(alt_probs):
-        p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
-        p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
-        powers = []
-        for n in ns:
-            # One-sided less test
-            k_crit = binom.ppf(alpha, n, p_null)
-            power = binom.cdf(k_crit, n, p_alt)
-            print(f"alt_prob={alt_prob}, n={n}, k_crit={k_crit}, power={power:.3f}")
-            powers.append(power)
-        ax = axes[i]
-        ax.plot(ns, powers, label=f'Power (alt={p_alt}, null={p_null})')
-        ax.set_xlabel('Number of Samples')
-        ax.set_title(f'alt_prob={alt_prob}')
-        ax.grid(True)
-        ax.legend()
-    axes[0].set_ylabel('Power')
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_binomial_overlay_subplots(n, alt_probs, alpha_targeting, alpha_engagement, metadata_df, alpha=0.05, direction='less'):
-    """
-    Plot overlayed binomial distributions for null and alternative probabilities for each alt_prob as subplots,
-    and highlight the critical region for the one-sided test. Label each subplot with the power.
-    """
-    num_probs = len(alt_probs)
-    fig, axes = plt.subplots(1, num_probs, figsize=(6 * num_probs, 5), sharey=True)
-    if num_probs == 1:
-        axes = [axes]
-    for i, alt_prob in enumerate(alt_probs):
-        p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
-        p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
-        x = np.arange(0, n+1)
-        pmf_null = binom.pmf(x, n, p_null)
-        pmf_alt = binom.pmf(x, n, p_alt)
-        ax = axes[i]
-        ax.plot(x, pmf_null, label=f'Null (p={p_null:.3g})', color='blue', alpha=0.7)
-        ax.plot(x, pmf_alt, label=f'Alt (p={p_alt:.3g})', color='red', alpha=0.7)
-        ax.fill_between(x, pmf_null, alpha=0.2, color='blue')
-        ax.fill_between(x, pmf_alt, alpha=0.2, color='red')
-
-        # Highlight the critical region for the one-sided test and compute power
-        if direction == 'less':
-            k_crit = int(binom.ppf(alpha, n, p_null))
-            # Fill only between k_crit and pmf_null (left tail)
-            ax.fill_between(x, 0, pmf_null, where=(x <= k_crit), color='orange', alpha=0.3, label=f'Rejection region (≤ {k_crit})')
-            # Draw vertical line for critical point
-            ax.axvline(k_crit, color='orange', linestyle='--', label=f'Critical value: {k_crit}')
-            power = binom.cdf(k_crit, n, p_alt)
-        else:
-            k_crit = int(binom.isf(alpha, n, p_null))
-            # Fill only between k_crit and pmf_null (right tail)
-            ax.fill_between(x, 0, pmf_null, where=(x >= k_crit), color='orange', alpha=0.3, label=f'Rejection region (≥ {k_crit})')
-            ax.axvline(k_crit, color='orange', linestyle='--', label=f'Critical value: {k_crit}')
-            power = binom.sf(k_crit - 1, n, p_alt)
-
-        ax.set_xlabel('Number of Successes')
-        ax.set_title(f'alt_prob={alt_prob}\nPower={power:.3f}')
-        ax.legend()
-    axes[0].set_ylabel('Probability')
-    plt.tight_layout()
+    plt.savefig(f'{directory}/{direction}_{plot_type}.svg', format='svg')
     plt.show()
 
 if __name__ == "__main__":
@@ -487,7 +282,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define the path for the new folder
-    new_folder_path = path.join('plots/', args.plot_type)
+    new_folder_path = path.join('plots_sequential/', args.plot_type)
 
     # Create the folder
     try:
@@ -507,8 +302,8 @@ if __name__ == "__main__":
 
     plot_type = args.plot_type
 
-    filename = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}_metadata.parquet'
+    filename = f'{new_folder_path}/{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/metadata/{plot_type}.parquet'
             
 
     match plot_type:
@@ -541,36 +336,35 @@ if __name__ == "__main__":
             epsilons = [(0,f_metrics)]
 
     if not args.plots_only:
-        runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
-                                    trials=trials,
-                                    trial_start=trial_start, 
-                                    campaign_size=campaign_size, 
-                                    null_prob=null_prob, 
-                                    alpha_targeting_values=alpha_targeting_values,
-                                    alpha_engagement_values=alpha_engagement_values, 
-                                    epsilons=epsilons,
-                                    direction=direction,
-                                    alt_probs=alt_probs,
-                                    num_processes=cores,
-                                    num_chunks=num_chunks,
-                                    filename=filename)
+        produceSampleComplexity(
+            campaign, adA, adB, website1, website2,
+            filename=filename,
+            filename_metadata=filename_metadata,
+            trials=trials,
+            campaign_size=campaign_size, 
+            null_prob=null_prob, 
+            alpha_targeting_values=alpha_targeting_values,
+            alpha_engagement_values=alpha_engagement_values, 
+            epsilons=epsilons,
+            direction=direction,
+            alt_probs=alt_probs
+        )
 
-    clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path, campaign_size=campaign_size)
-    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
+    clicks_df = pd.read_parquet(filename, engine='pyarrow')
+    metadata_df = pd.read_parquet(filename_metadata, engine='pyarrow')
+    if plot_type == "private_v_nonprivate":
+        clicks_df.loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
+        plt.show()
+    if plot_type == "test":
+        clicks_df.loc[(1,1,0)].hist(bins=100, figsize=(10, 6))
+        plt.show()
 
-    plot_binomial_overlay_subplots(
-        n=100,
-        alt_probs=alt_probs,
-        alpha_targeting=alpha_targeting_values[0],
-        alpha_engagement=alpha_engagement_values[0],
-        metadata_df=metadata_df
+    plotNumSamples(
+        clicks_df,
+        metadata_df,
+        combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))],
+        st_dev=args.show_st_dev,
+        null_pr=null_prob,
+        directory=new_folder_path,
+        plot_type=plot_type
     )
-
-    
-    plot_binomial_power_curve_subplots(alt_probs=alt_probs, 
-                                        alpha=0.05, 
-                                        max_samples=10,
-                                        alpha_targeting=alpha_targeting_values[0],
-                                        alpha_engagement=alpha_engagement_values[0],
-                                        metadata_df=metadata_df)
-    #type two error is the amonut of the alt distribution thats inside the non-rejection region of the null distribution

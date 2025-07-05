@@ -16,6 +16,9 @@ import matplotlib.pyplot as plt
 import argparse
 from os import makedirs, path, listdir
 from collections import defaultdict
+from binomial_plots import plot_binomial_power_curve_subplots, plot_binomial_overlay_subplots
+from plot_distinguishing_game import visualize_sample_complexity_df, plotNumSamples
+import shutil
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             filename='', 
@@ -160,28 +163,26 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                     random.setstate(state) #reset state after metrics
                     np.random.set_state(statenp)
 
+                    p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
+                    p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
+                        
                     if epsilon[0] != 0:
                         # Add Tulap noise for the current epsilon
                         de = delta
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
-                        alt_prob = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
-                        null_prob = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
                         if direction == 'left':
-                            pval = pvalue_left(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_left(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                         else:
-                            pval = pvalue_right(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_right(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                     else:
                         if direction == 'left':
-                            # beta = binom.cdf(int(clicks), userID+1, metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"])
-                            # power = 1 - beta
-                            k_crit = binom.isf(0.05, userID+1, null_prob)
-                            power = binom.sf(k_crit, n, alt_prob)
-                            pval = binomtest(k=int(clicks), n=userID+1, p=null_prob, alternative='less').pvalue
+                            critical_value = binom.ppf(0.05, userID+1, p_null)
+                            power = binom.cdf(critical_value, userID+1, p_alt) if critical_value > 0 else 0
+                            pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='less').pvalue
                         else:
-                            k_crit = binom.isf(0.05, userID+1, null_prob)
-                            power = binom.sf(k_crit - 1, n, alt_prob)
-                            pval = binomtest(k=int(clicks), n=userID+1, p=null_prob, alternative='greater').pvalue
+                            
+                            pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='greater').pvalue
                     
                     if pval <= 0.05 and power >= 0.8:
                         pval_df.loc[(alpha_targeting, alpha_engagement, epsilon[0], trial), alt_prob] = userID
@@ -193,64 +194,6 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
     filename_metadata = filename.replace('/nullprob', '/metadata/nullprob')
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
 
-def plotNumSamples(pval_df, metadata_df, direction='left', combo=[], st_dev = True, null_pr=0.5, directory='plots/', plot_type='private_v_nonprivate'):
-    # Initialize a figure
-    plt.figure(figsize=(12, 8))
-    plt.rcParams['font.size'] = 16
-
-    colors = ["#e27c7c", "#a86464", '#8B5757', "#6d4b4b", "#503f3f"]
-    markers = ['o', 's', 'd', '^', 'D']
-    match plot_type:
-        case 'private_v_nonprivate':
-            colors = ["#e27c7c", "#a86464", "#6d4b4b", "#503f3f"]
-            linetype = ['Private', 'Non-Private', 'Baseline'] 
-            labels = [f'{linetype} (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})' for (alpha_targeting, alpha_engagement, epsilon), linetype in zip(combo, linetype)]
-        case 'targeting':
-            labels = [f'α_targeting={alpha}' for alpha, _, _ in combo]
-        case 'epsilon':
-            labels = [f'ε={epsilon}' for _, _, epsilon in combo]
-        case 'engagement':
-            labels = [f'α_engagement={alpha}' for _, alpha, _ in combo]
-        case 'test':
-            labels = [f'α_targeting={alpha_targeting}, α_engagement={alpha_engagement}, ε={epsilon}' for alpha_targeting, alpha_engagement, epsilon in combo]
-
-    for entry in combo:
-        alpha_targeting = entry[0]
-        alpha_engagement=entry[1]
-        epsilon=entry[2]
-        results = pval_df.loc[(alpha_targeting, alpha_engagement, epsilon)]
-        means = results.mean(axis=0)
-
-        # Plot private mean and standard deviation for each alpha
-        plt_color = colors.pop(0)
-        plt.plot(means.index, means, marker=markers.pop(0), label=labels.pop(0), color=plt_color)
-        if st_dev:
-            private_stds = results.std(axis=0)
-            plt.fill_between(
-                means.index,
-                means - private_stds,
-                means + private_stds,
-                color=plt_color,
-                alpha=0.2,
-                label=f'Private Std Dev (ε={epsilon}, α_targeting={alpha_targeting}, α_engagement={alpha_engagement})'
-            )
-    # Set x-ticks to alt_probs and label with TVD from metadata_df
-    alt_probs = means.index
-    # Get TVD values for the first alpha_targeting/alpha_engagement in combo (assumes TVD is the same for all combos at each alt_prob)
-    tvd_labels = [f"{metadata_df.loc[(alt_prob, combo[0][0], combo[0][1]), 'tvd']:.3f}" for alt_prob in alt_probs]
-    plt.xticks(ticks=alt_probs, labels=tvd_labels)
-    plt.xlabel(f'Total Variation Distance (TVD) between D0 and D1')
-
-    plt.ylabel('Number of Samples')
-    plt.title(f'Campaign Size Required to Distinguish') 
-    plt.yscale('log')
-    plt.legend()
-    plt.grid()
-    plt.tight_layout()
-
-    # Show the plot
-    plt.savefig(f'{directory}/pval_{direction}_{plot_type}.svg', format='svg')
-    plt.show()
 
 def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/', campaign_size=200000):
     # Concatenate all found files
@@ -267,25 +210,6 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     
     #combine all alt_probs into one df
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
-
-    print(f"Max value across entire DataFrame: {clicks_df.max().max()}")
-    print(f"NaN count per column in clicks_df: {clicks_df.isna().sum()}")
-    if plot_type == 'test':
-        print(f'count of values less than 20 {(clicks_df < 20).sum()}')  #count of values less than 20
-        print(f'count of values less than 100 {(clicks_df < 100).sum()}') 
-        print(f'shape of each column: {[clicks_df[col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
-        clicks_df.hist(bins=100, figsize=(10, 6))
-        plt.show()
-        clicks_df[clicks_df < 50].hist(bins=50, figsize=(10, 6))
-        plt.show()
-    elif plot_type == 'private_v_nonprivate':
-        print(f'count of values less than 20 {(clicks_df.loc[(0.6,0.2,0.1)] < 20).sum()}')
-        print(f'count of values less than 100 {(clicks_df.loc[(0.6,0.2,0.1)] < 100).sum()}')
-        print(f'shape of each column: {[clicks_df.loc[(0.6,0.2,0.1)][col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
-        clicks_df.loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
-        plt.show()
-        clicks_df[clicks_df<500].loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
-        plt.show()
 
     metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
@@ -384,79 +308,6 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
     for pbar in progress_bars.values():
         pbar.close()
 
-def plot_binomial_power_curve_subplots(alt_probs, alpha=0.05, max_samples=500, step=1, metadata_df=None, alpha_targeting=0.5, alpha_engagement=0.5):
-    """
-    Plot power vs. number of samples for a binomial test comparing each alt_prob to null_prob as subplots.
-    """
-    num_probs = len(alt_probs)
-    fig, axes = plt.subplots(1, num_probs, figsize=(6 * num_probs, 5), sharey=True)
-    if num_probs == 1:
-        axes = [axes]
-    ns = np.arange(1, max_samples + 1, step)
-    for i, alt_prob in enumerate(alt_probs):
-        p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
-        p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
-        powers = []
-        for n in ns:
-            # One-sided less test
-            k_crit = binom.ppf(alpha, n, p_null)
-            power = binom.cdf(k_crit, n, p_alt)
-            print(f"alt_prob={alt_prob}, n={n}, k_crit={k_crit}, power={power:.3f}")
-            powers.append(power)
-        ax = axes[i]
-        ax.plot(ns, powers, label=f'Power (alt={p_alt}, null={p_null})')
-        ax.set_xlabel('Number of Samples')
-        ax.set_title(f'alt_prob={alt_prob}')
-        ax.grid(True)
-        ax.legend()
-    axes[0].set_ylabel('Power')
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_binomial_overlay_subplots(n, alt_probs, alpha_targeting, alpha_engagement, metadata_df, alpha=0.05, direction='less'):
-    """
-    Plot overlayed binomial distributions for null and alternative probabilities for each alt_prob as subplots,
-    and highlight the critical region for the one-sided test. Label each subplot with the power.
-    """
-    num_probs = len(alt_probs)
-    fig, axes = plt.subplots(1, num_probs, figsize=(6 * num_probs, 5), sharey=True)
-    if num_probs == 1:
-        axes = [axes]
-    for i, alt_prob in enumerate(alt_probs):
-        p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
-        p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
-        x = np.arange(0, n+1)
-        pmf_null = binom.pmf(x, n, p_null)
-        pmf_alt = binom.pmf(x, n, p_alt)
-        ax = axes[i]
-        ax.plot(x, pmf_null, label=f'Null (p={p_null:.3g})', color='blue', alpha=0.7)
-        ax.plot(x, pmf_alt, label=f'Alt (p={p_alt:.3g})', color='red', alpha=0.7)
-        ax.fill_between(x, pmf_null, alpha=0.2, color='blue')
-        ax.fill_between(x, pmf_alt, alpha=0.2, color='red')
-
-        # Highlight the critical region for the one-sided test and compute power
-        if direction == 'less':
-            k_crit = int(binom.ppf(alpha, n, p_null))
-            # Fill only between k_crit and pmf_null (left tail)
-            ax.fill_between(x, 0, pmf_null, where=(x <= k_crit), color='orange', alpha=0.3, label=f'Rejection region (≤ {k_crit})')
-            # Draw vertical line for critical point
-            ax.axvline(k_crit, color='orange', linestyle='--', label=f'Critical value: {k_crit}')
-            power = binom.cdf(k_crit, n, p_alt)
-        else:
-            k_crit = int(binom.isf(alpha, n, p_null))
-            # Fill only between k_crit and pmf_null (right tail)
-            ax.fill_between(x, 0, pmf_null, where=(x >= k_crit), color='orange', alpha=0.3, label=f'Rejection region (≥ {k_crit})')
-            ax.axvline(k_crit, color='orange', linestyle='--', label=f'Critical value: {k_crit}')
-            power = binom.sf(k_crit - 1, n, p_alt)
-
-        ax.set_xlabel('Number of Successes')
-        ax.set_title(f'alt_prob={alt_prob}\nPower={power:.3f}')
-        ax.legend()
-    axes[0].set_ylabel('Probability')
-    plt.tight_layout()
-    plt.show()
-
 if __name__ == "__main__":
 
     adA = Advertisement(identifier=3, content=[1,0,1], targetAudience=[1,1,1], campaignID=5)
@@ -483,6 +334,7 @@ if __name__ == "__main__":
     parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
     parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
     parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
+    parser.add_argument("--clean", help="remove previous data for plot type", action='store_true')
 
     args = parser.parse_args()
 
@@ -490,6 +342,9 @@ if __name__ == "__main__":
     new_folder_path = path.join('plots/', args.plot_type)
 
     # Create the folder
+    if args.clean and path.exists(new_folder_path) and not args.plots_only: #cant remove and plot. prevent accidents.
+        shutil.rmtree(new_folder_path)
+
     try:
         makedirs(new_folder_path, exist_ok=True)
         makedirs(f'{new_folder_path}/metadata', exist_ok=True)
@@ -573,4 +428,6 @@ if __name__ == "__main__":
                                         alpha_targeting=alpha_targeting_values[0],
                                         alpha_engagement=alpha_engagement_values[0],
                                         metadata_df=metadata_df)
+    
+    visualize_sample_complexity_df(clicks_df, plot_type=plot_type)
     #type two error is the amonut of the alt distribution thats inside the non-rejection region of the null distribution

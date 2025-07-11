@@ -87,7 +87,7 @@ def compute_power_df(metadata_df, combo, alt_probs=[0.5,0.6], campaign_size=1000
                     power = 1 - density_above_k_crit
                     results.append({'alt_prob': p_alt, 'null_prob':p_null, 'epsilon' : epsilon, 'num_samples': num_samples, 'power': power})
 
-                    if num_samples%100 == 0:
+                    if num_samples%1000 == 0:
                         # Plot PDF and mark k_crit
                         plt.figure(figsize=(8, 5))
                         counts, bin_edges, _ = plt.hist(null_binom, bins=50, density=True, alpha=0.6, label="Empirical PDF Null")
@@ -107,7 +107,9 @@ def compute_power_df(metadata_df, combo, alt_probs=[0.5,0.6], campaign_size=1000
     print(df_pivot)
     return df_pivot
 
-
+#save power df to folder named by plot type. do not clean this as part of clean!! save it by alt_prob so can be used by parallel
+#(and so it's smaller and the different alt probs can stop early if they want)
+#i.e. rewrite so it stops when power >= 0.9
 
 
 # # print("cdf_null:", cdf_null, "k_crit_null:", k_crit_null)

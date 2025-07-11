@@ -19,8 +19,10 @@ from collections import defaultdict
 from binomial_plots import plot_binomial_power_curve_subplots, plot_binomial_overlay_subplots
 from plot_distinguishing_game import visualize_sample_complexity_df, plotNumSamples
 import shutil
+from sequential_distinguishing_game import produceMetadataDataframe
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
+                                            metadata_df = None,
                                             filename='', 
                                              trials=[], 
                                              campaign_size=10, 
@@ -33,16 +35,12 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                              direction='left',
                                              progress_callback=None):
 
-    # Generate all boolean arrays of length 3
-    all_users = list(itertools.product([False, True], repeat=3))
-
-    margprobEco1 = [0.2, 0.5, null_prob]
+    metadata_df = metadata_df
 
     corr = np.array([[1., -0.25, -0.0625],
                     [-0.25,   1.,  0.25],
                     [-0.0625, 0.25, 1.]])
     n = 100000 #for pr dist of users
-    commonprob_eco1 = bnd.bincorr2commonprob(margprob=margprobEco1, bincorr=corr)
 
     array_multiindex = pd.MultiIndex.from_arrays(
             [alpha_targeting_values,
@@ -67,27 +65,9 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
         pval_df = pd.DataFrame(index=multiindex, columns=alt_probs, dtype=int)
         pval_df.sort_index(inplace=True)
 
-    multiindex = pd.MultiIndex.from_product(
-        [alt_probs,
-            list(set(alpha_targeting_values)),
-            list(set(alpha_engagement_values))],
-        names=['margprob', 'alpha_targeting', 'alpha_engagement']
-    )
-
-    metadata_df = pd.DataFrame(index=multiindex, columns=['tvd', "conversionProbAdA", "conversionProbAdA_null"])
-
-    #do eco1 once to compute necessary probabilities:
-    user_dist_eco1 = bnd.rmvbin(margprob=np.diag(commonprob_eco1), 
-                            commonprob=commonprob_eco1, N=n)
-
-    unique_users, counts = np.unique(user_dist_eco1, axis=0, return_counts=True)
-    userProb_eco1 = defaultdict(float)
-    userProb_eco1.update(dict(zip(map(tuple, unique_users), counts/n)))
-
     combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
 
     for alt_prob in alt_probs:
-        #print(f"Processing for alt_prob: {alt_prob}")
         margprobEco2 = [0.2, 0.5, alt_prob]
 
         commonprob_eco2 = bnd.bincorr2commonprob(margprob=margprobEco2, bincorr=corr)
@@ -100,37 +80,6 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
         userProb_eco2.update(dict(zip(map(tuple, unique_users), counts/n)))
 
         for alpha_targeting, alpha_engagement, epsilon in combo:
-            #theoretical probabilities for metadata table
-            totalUserProbEco1 = 0
-            totalConvProbEco1 = 0
-            totalUserProbEco2 = 0
-            totalConvProbEco2 = 0
-            total_variation_distance = 0
-
-            for user in all_users:
-                prUser_eco1 = userProb_eco1[user]
-                totalUserProbEco1 += prUser_eco1
-                prUser_eco2 = userProb_eco2[user]
-                totalUserProbEco2 += prUser_eco2
-
-                closeA_targeting = close(adA.targetAudience, user)
-                closeB_targeting = close(adB.targetAudience, user)
-                epsilon_targeting = closeA_targeting-closeB_targeting
-                prShowA = (1+alpha_targeting*epsilon_targeting)/2
-
-                close_engagement = close(adA.content, user)
-                prClickA = alpha_engagement * close_engagement
-
-                prConvertA_eco1 = prUser_eco1 * prShowA * prClickA
-                prConvertA_eco2 = prUser_eco2 * prShowA * prClickA
-                totalConvProbEco1 += prConvertA_eco1
-                totalConvProbEco2 += prConvertA_eco2
-                total_variation_distance += abs(prUser_eco1 - prUser_eco2)
-
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'tvd'] = total_variation_distance
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA'] = totalConvProbEco2
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA_null'] = totalConvProbEco1
-
             #empirical observations for clicks table
             for trial in trials:
                 #resample the users for each trial
@@ -165,34 +114,37 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
 
                     p_alt = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"]
                     p_null = metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"]
-                        
+
                     if epsilon[0] != 0:
                         # Add Tulap noise for the current epsilon
                         de = delta
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
                         if direction == 'left':
-                            pval = pvalue_left(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
+                            pval = pvalue_left(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
                         else:
-                            pval = pvalue_right(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
+                            pval = pvalue_right(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
                     else:
                         if direction == 'left':
-                            critical_value = binom.ppf(0.05, userID+1, p_null)
-                            power = binom.cdf(critical_value, userID+1, p_alt) if critical_value > 0 else 0
                             pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='less').pvalue
                         else:
-                            
                             pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='greater').pvalue
                     
-                    if pval <= 0.05 and power >= 0.8:
+                    # if plot_type == "test":
+                    #     print("clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null pr: ", p_null)
+
+                    if pval <= 0.05 and clicks > 0:
+                        #print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null_prob: ", p_null)
+
+                        # if plot_type == "test" and clicks > 0 and clicks < (userID + 1):
+                        #     pval_noep = binomtest(k=int(clicks), n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], alternative='less').pvalue 
+                        #     print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "pval_noep: ", pval_noep, "alt_prob: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA"], "null pr: ", metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"])
                         pval_df.loc[(alpha_targeting, alpha_engagement, epsilon[0], trial), alt_prob] = userID
                         break
                 if progress_callback:
                     progress_callback()
 
     pval_df.to_parquet(filename, engine='pyarrow', compression='snappy')
-    filename_metadata = filename.replace('/nullprob', '/metadata/nullprob')
-    metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
 
 
 def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subsets=[], plot_type='private_v_nonprivate', directory='plots/', campaign_size=200000):
@@ -211,7 +163,7 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     #combine all alt_probs into one df
     clicks_df = pd.concat(altprob_dfs, axis=1, verify_integrity=True)
 
-    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f and f"trial_subset0" in f]
+    metadata_dfs = [pd.read_parquet(f"{directory}/metadata/{f}") for f in listdir(f"{directory}/metadata") if f.endswith('.parquet') and "combined" not in f]
     metadata_df = pd.concat(metadata_dfs, verify_integrity=True)
 
     filename = f'{directory}/combined.parquet'
@@ -220,7 +172,7 @@ def combinePValDf(filename='', filename_metadata='', alt_probs = [], trial_subse
     metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
     return clicks_df, metadata_df
 
-def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2, campaign_size, null_prob, alpha_targeting_values, alpha_engagement_values, epsilons, direction, filename):
+def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2, metadata_dataframe, campaign_size, null_prob, alpha_targeting_values, alpha_engagement_values, epsilons, direction, filename):
     """
     Process a single chunk of trials for a given alt_prob.
     """
@@ -234,6 +186,7 @@ def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2,
             adB=adB,
             website1=website1,
             website2=website2,
+            metadata_df = metadata_dataframe,
             trials=list(trial_chunk),
             campaign_size=campaign_size,
             filename=filename,
@@ -247,7 +200,7 @@ def process_chunk(trial_chunk, alt_prob, campaign, adA, adB, website1, website2,
         )
     return alt_prob, len(trial_chunk)
 
-def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2, 
+def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
                                         trials=0,
                                         trial_start=0, 
                                         campaign_size=0, 
@@ -259,7 +212,8 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
                                         alt_probs=[], 
                                         num_processes=8,
                                         num_chunks=16,
-                                        filename=''):
+                                        filename='',
+                                        filename_metadata = ''):
     # Divide trials into 20 fixed chunks
     trial_chunks = np.array_split(range(trial_start, trial_start+trials), num_chunks)
 
@@ -277,6 +231,13 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
     with ProcessPoolExecutor(max_workers=num_processes) as executor:
         futures = []
         for alt_prob in alt_probs:
+            metadata_df = produceMetadataDataframe(adA, adB,
+                                                null_prob=null_prob, 
+                                                alt_probs=[alt_prob], 
+                                                alpha_targeting_values=alpha_targeting_values, 
+                                                alpha_engagement_values=alpha_engagement_values,
+                                                epsilons=epsilons)
+            metadata_df.to_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}"), engine='pyarrow', compression='snappy')
             for trial_chunk in trial_chunks:
                 filename_chunk = filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_chunk[0]}_{trial_chunk[-1]}")
                 futures.append(
@@ -289,6 +250,7 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
                         adB,
                         website1,
                         website2,
+                        metadata_df,
                         campaign_size,
                         null_prob,
                         alpha_targeting_values,
@@ -318,11 +280,6 @@ if __name__ == "__main__":
     #we aren't using the context for targeting and engagement right now
     website1 = Website(identifier=15, siteFeatures=[1,0,1])
     website2 = Website(identifier=30, siteFeatures=[1,1,0])
-
-    # # Format the date as a string (e.g., "2025-06-18")
-    # folder_name = datetime.date.today().strftime("%Y-%m-%d")
-    # #folder_name = '2025-06-11'
-
 
     parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
     parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
@@ -363,7 +320,7 @@ if __name__ == "__main__":
     plot_type = args.plot_type
 
     filename = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}_metadata.parquet'
+    filename_metadata = f'{new_folder_path}/metadata/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
             
 
     match plot_type:
@@ -408,26 +365,27 @@ if __name__ == "__main__":
                                     alt_probs=alt_probs,
                                     num_processes=cores,
                                     num_chunks=num_chunks,
-                                    filename=filename)
+                                    filename=filename,
+                                    filename_metadata = filename_metadata)
 
     clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path, campaign_size=campaign_size)
-    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
+    # plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
 
-    plot_binomial_overlay_subplots(
-        n=100,
-        alt_probs=alt_probs,
-        alpha_targeting=alpha_targeting_values[0],
-        alpha_engagement=alpha_engagement_values[0],
-        metadata_df=metadata_df
-    )
+    # plot_binomial_overlay_subplots(
+    #     n=100,
+    #     alt_probs=alt_probs,
+    #     alpha_targeting=alpha_targeting_values[0],
+    #     alpha_engagement=alpha_engagement_values[0],
+    #     metadata_df=metadata_df
+    # )
 
     
-    plot_binomial_power_curve_subplots(alt_probs=alt_probs, 
-                                        alpha=0.05, 
-                                        max_samples=10,
-                                        alpha_targeting=alpha_targeting_values[0],
-                                        alpha_engagement=alpha_engagement_values[0],
-                                        metadata_df=metadata_df)
+    # plot_binomial_power_curve_subplots(alt_probs=alt_probs, 
+    #                                     alpha=0.05, 
+    #                                     max_samples=10,
+    #                                     alpha_targeting=alpha_targeting_values[0],
+    #                                     alpha_engagement=alpha_engagement_values[0],
+    #                                     metadata_df=metadata_df)
     
-    visualize_sample_complexity_df(clicks_df, plot_type=plot_type)
+    # visualize_sample_complexity_df(clicks_df, plot_type=plot_type)
     #type two error is the amonut of the alt distribution thats inside the non-rejection region of the null distribution

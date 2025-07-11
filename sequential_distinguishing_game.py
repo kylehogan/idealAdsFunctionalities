@@ -16,7 +16,6 @@ from collections import defaultdict
 import shutil
 from plot_distinguishing_game import plotNumSamples, visualize_sample_complexity_df
 from binomial_plots import plot_binomial_power_curve_subplots, plot_binomial_overlay_subplots
-from tulap_dist import compute_power_df
 
 def produceMetadataDataframe(adA, adB,  
                                 null_prob=0.1, 
@@ -113,7 +112,6 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             direction='left', 
                                             power_df=None):
 
-    # Generate all boolean arrays of length 3
     metadata_df = pd.read_parquet(filename_metadata)
 
     corr = np.array([[1., -0.25, -0.0625],
@@ -200,14 +198,11 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
                         if direction == 'left':
-                            power = power_df.loc[(p_alt, p_null, epsilon[0]), userID+1]
                             pval = pvalue_left(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
                         else:
                             pval = pvalue_right(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
                     else:
                         if direction == 'left':
-                            critical_value = binom.ppf(0.05, userID+1, p_null)
-                            power = binom.cdf(critical_value, userID+1, p_alt) if critical_value > 0 else 0
                             pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='less').pvalue
                         else:
                         
@@ -216,7 +211,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                     # if plot_type == "test":
                     #     print("clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null pr: ", p_null)
 
-                    if pval <= 0.05 and power >= 0.8:
+                    if pval <= 0.05 and clicks > 0:
                         print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null_prob: ", p_null)
 
                         # if plot_type == "test" and clicks > 0 and clicks < (userID + 1):

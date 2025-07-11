@@ -3,7 +3,7 @@ import numpy as np
 from scipy.stats import bernoulli
 import random
 from adTypes import Advertisement, Conversion, Website, Campaign, features
-from binomialdpy import tulap
+from tulap import random as tulap_random
 
 
 def close(otherFeatures: features, userFeatures: features) -> float:
@@ -53,7 +53,7 @@ def f_metrics_dp_ep001(data: list[bool]) -> float:
     de = 0
     b = np.exp(-0.01)
     q = 2 * de * b / (1 - b + 2 * de * b)
-    noise = tulap.random(n=1, m=0, b=b, q=q)
+    noise = tulap_random(n=1, m=0, b=b, q=q)
     return sum(data) + noise
 
 def f_metrics_dp_ep01(data: list[bool]) -> float:
@@ -61,7 +61,7 @@ def f_metrics_dp_ep01(data: list[bool]) -> float:
     de = 0
     b = np.exp(-0.1)
     q = 2 * de * b / (1 - b + 2 * de * b)
-    noise = tulap.random(n=1, m=0, b=b, q=q)
+    noise = tulap_random(n=1, m=0, b=b, q=q)
     return sum(data) + noise
 
 def f_metrics_dp_ep1(data: list[bool]) -> float:
@@ -69,5 +69,5 @@ def f_metrics_dp_ep1(data: list[bool]) -> float:
     de = 0
     b = np.exp(-0.01)
     q = 2 * de * b / (1 - b + 2 * de * b)
-    noise = tulap.random(n=1, m=0, b=b, q=q)
+    noise = tulap_random(n=1, m=0, b=b, q=q)
     return sum(data) + noise

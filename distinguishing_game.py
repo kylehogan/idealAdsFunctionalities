@@ -4,8 +4,8 @@ import itertools
 from parameterizing_funcs import f_attribution, f_targeting, f_browsing, f_engagement, f_metrics, close, f_metrics_dp_ep001, f_metrics_dp_ep01, f_metrics_dp_ep1
 from adTypes import Advertisement, Website, Campaign
 from idealFunctionalities.idealAdsEcosystem import AdsEcosystem
-from binomialdpy.pvalue import left as pvalue_left
-from binomialdpy.pvalue import right as pvalue_right
+from pvalue import left as pvalue_left
+from pvalue import right as pvalue_right
 from scipy.stats import binomtest, binom
 import pandas as pd
 import random
@@ -369,7 +369,7 @@ if __name__ == "__main__":
                                     filename_metadata = filename_metadata)
 
     clicks_df, metadata_df = combinePValDf(filename=filename, filename_metadata=filename_metadata, alt_probs=alt_probs, trial_subsets=np.array_split(range(trials), num_chunks), plot_type=plot_type, directory=new_folder_path, campaign_size=campaign_size)
-    # plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
+    plotNumSamples(clicks_df, metadata_df, combo=[(alpha_targeting_values[i], alpha_engagement_values[i], epsilons[i][0]) for i in range(len(epsilons))], st_dev=args.show_st_dev, null_pr=null_prob, directory=new_folder_path, plot_type=plot_type)
 
     # plot_binomial_overlay_subplots(
     #     n=100,

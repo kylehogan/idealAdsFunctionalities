@@ -236,11 +236,9 @@ if __name__ == "__main__":
     parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
     parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
     parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
-    parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
     parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
     parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
     parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
-    parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
     parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
     parser.add_argument("--clean", help="remove previous data for plot type", action='store_true')
     parser.add_argument("--campaign_size", help="how many users in campaign (max num samples)", default=100000, type=int)
@@ -248,7 +246,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Define the path for the new folder
-    new_folder_path = path.join('plots/', args.plot_type)
+    new_folder_path = path.join('sequential_plots/', args.plot_type)
 
     # Create the folder
     if args.clean and path.exists(new_folder_path) and not args.plots_only: #cant remove and plot. prevent accidents.

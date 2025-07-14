@@ -126,7 +126,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                 names=['alpha_targeting', 'alpha_engagement', 'epsilon'])
 
     #add the trials to index without creating all combinations of alpha targeting, engagement, and epsilon
-    multiindex = pd.MultiIndex.from_frame(array_multiindex.to_frame().merge(pd.Series(trials, name="trial"), how='cross'))
+    multiindex = pd.MultiIndex.from_frame(array_multiindex.to_frame().merge(pd.Series(list(range(trial_start, trial_start+trials)), name="trial"), how='cross'))
 
     #allow for adding new data or overwriting only some data without recomputing everything
     if path.exists(filename):
@@ -140,7 +140,8 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
     else:
         # Initialize DataFrames with the updated multiindex
         pval_df = pd.DataFrame(index=multiindex, columns=alt_probs, dtype=int)
-        pval_df.sort_index(inplace=True)
+    
+    pval_df.sort_index(inplace=True)
 
     combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
 
@@ -260,8 +261,6 @@ if __name__ == "__main__":
 
     campaign_size = args.campaign_size
     trials = args.trials
-    cores=args.cores
-    num_chunks = args.num_chunks
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = args.null_prob  # Null marginal probability for the test bit
     direction = 'left' if null_prob > max(alt_probs) else 'right'
@@ -269,8 +268,8 @@ if __name__ == "__main__":
 
     plot_type = args.plot_type
 
-    filename = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/metadata/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
+    filename = f'{new_folder_path}/nullprob_{null_prob}_altprob{alt_probs}_trial_subset{trial_start}_{trial_start+trials}_{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/metadata/nullprob_{null_prob}_altprob{alt_probs}_trial_subset{trial_start}_{trial_start+trials}_trial_subset_{plot_type}.parquet'
             
 
     match plot_type:

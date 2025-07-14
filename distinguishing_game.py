@@ -121,9 +121,9 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
                         if direction == 'left':
-                            pval = pvalue_left(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_left(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                         else:
-                            pval = pvalue_right(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_right(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                     else:
                         if direction == 'left':
                             pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='less').pvalue
@@ -292,6 +292,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
     parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
     parser.add_argument("--clean", help="remove previous data for plot type", action='store_true')
+    parser.add_argument("--campaign_size", help="how many users in campaign (max num samples)", default=100000, type=int)
 
     args = parser.parse_args()
 
@@ -308,7 +309,7 @@ if __name__ == "__main__":
     except OSError as e:
         print(f"Error creating folder: {e}")
 
-    campaign_size = 100000
+    campaign_size = args.campaign_size
     trials = args.trials
     cores=args.cores
     num_chunks = args.num_chunks
@@ -344,7 +345,7 @@ if __name__ == "__main__":
         case 'engagement':  
             #make a plot for game: vary only alpha-engagement
             alpha_engagement_values = [0.1, 0.5, 0.9, 1]
-            #alpha_engagement_values = [0.1]
+            alpha_engagement_values = [0.1]
             alpha_targeting_values = [1] * len(alpha_engagement_values)
             epsilons = [(0,f_metrics)] * len(alpha_engagement_values)
         case "test":
@@ -387,5 +388,5 @@ if __name__ == "__main__":
     #                                     alpha_engagement=alpha_engagement_values[0],
     #                                     metadata_df=metadata_df)
     
-    # visualize_sample_complexity_df(clicks_df, plot_type=plot_type)
+    visualize_sample_complexity_df(clicks_df, plot_type=plot_type)
     #type two error is the amonut of the alt distribution thats inside the non-rejection region of the null distribution

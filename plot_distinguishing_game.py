@@ -80,3 +80,11 @@ def visualize_sample_complexity_df(clicks_df, plot_type='private_v_nonprivate'):
         plt.show()
         clicks_df[clicks_df<500].loc[(0.6,0.2,0.1)].hist(bins=100, figsize=(10, 6))
         plt.show()
+    elif plot_type == "engagement":
+        print(f'count of values less than 20 {(clicks_df.loc[(1,0.1,0)] < 20).sum()}')
+        print(f'count of values less than 100 {(clicks_df.loc[(1,0.1,0)] < 100).sum()}')
+        print(f'shape of each column: {[clicks_df.loc[(1,0.1,0)][col].shape for col in clicks_df.columns]}') #shape of each column for (0.1,1,0)
+        clicks_df.loc[(1,0.1,0)].hist(bins=100, figsize=(10, 6))
+        plt.show()
+        clicks_df[clicks_df<500].loc[(1,0.1,0)].hist(bins=100, figsize=(10, 6))
+        plt.show()

@@ -101,7 +101,8 @@ def produceMetadataDataframe(adA, adB,
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             filename='',
                                             filename_metadata='', 
-                                            trials=10, 
+                                            trials=10,
+                                            trial_start = 0, 
                                             campaign_size=10, 
                                             null_prob=0.1, 
                                             alt_probs = [0.25, 0.5, 0.75], 
@@ -109,8 +110,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             alpha_engagement_values = [0.1,0.5,0.9,1],
                                             epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)],
                                             delta=0,
-                                            direction='left', 
-                                            power_df=None):
+                                            direction='left'):
 
     metadata_df = pd.read_parquet(filename_metadata)
 
@@ -158,7 +158,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
 
         for alpha_targeting, alpha_engagement, epsilon in combo:
             #empirical observations for clicks table
-            for trial in range(trials):
+            for trial in range(trial_start, trial_start+trials):
                 #resample the users for each trial
                 user_dist_eco2 = bnd.rmvbin(margprob=np.diag(commonprob_eco2), 
                                 commonprob=commonprob_eco2, N=campaign_size)
@@ -198,9 +198,9 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                         b = np.exp(-epsilon[0])
                         q = 2 * de * b / (1 - b + 2 * de * b)
                         if direction == 'left':
-                            pval = pvalue_left(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_left(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                         else:
-                            pval = pvalue_right(clicks, n=userID+1, p=null_prob, b=b, q=q)[0]
+                            pval = pvalue_right(clicks, n=userID+1, p=p_null, b=b, q=q)[0]
                     else:
                         if direction == 'left':
                             pval = binomtest(k=int(clicks), n=userID+1, p=p_null, alternative='less').pvalue
@@ -212,7 +212,7 @@ def produceSampleComplexity(campaign, adA, adB, website1, website2,
                     #     print("clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null pr: ", p_null)
 
                     if pval <= 0.05 and clicks > 0:
-                        print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null_prob: ", p_null)
+                        #print("FINISHED: clicks: ", clicks, "userID: ", userID, "pval: ", pval, "power: ", power, "alt_prob: ", p_alt, "null_prob: ", p_null)
 
                         # if plot_type == "test" and clicks > 0 and clicks < (userID + 1):
                         #     pval_noep = binomtest(k=int(clicks), n=userID+1, p=metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), "conversionProbAdA_null"], alternative='less').pvalue 
@@ -232,26 +232,20 @@ if __name__ == "__main__":
     website1 = Website(identifier=15, siteFeatures=[1,0,1])
     website2 = Website(identifier=30, siteFeatures=[1,1,0])
 
-    # # Format the date as a string (e.g., "2025-06-18")
-    # folder_name = datetime.date.today().strftime("%Y-%m-%d")
-    # #folder_name = '2025-06-11'
-
-
     parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
     parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
     parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
     parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
-    parser.add_argument("--campaign_size", help="number of trials to run", default=100000, type=int)
+    parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
     parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
     parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
     parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
+    parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
     parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
     parser.add_argument("--clean", help="remove previous data for plot type", action='store_true')
+    parser.add_argument("--campaign_size", help="how many users in campaign (max num samples)", default=100000, type=int)
 
     args = parser.parse_args()
-
-    # Define the path for the new folder
-    new_folder_path = path.join('plots_sequential/', args.plot_type)
 
     # Define the path for the new folder
     new_folder_path = path.join('plots/', args.plot_type)
@@ -260,7 +254,6 @@ if __name__ == "__main__":
     if args.clean and path.exists(new_folder_path) and not args.plots_only: #cant remove and plot. prevent accidents.
         shutil.rmtree(new_folder_path)
 
-    # Create the folder
     try:
         makedirs(new_folder_path, exist_ok=True)
         makedirs(f'{new_folder_path}/metadata', exist_ok=True)
@@ -269,6 +262,8 @@ if __name__ == "__main__":
 
     campaign_size = args.campaign_size
     trials = args.trials
+    cores=args.cores
+    num_chunks = args.num_chunks
     alt_probs = args.alt_probs  # Marginal probabilities for the test bit
     null_prob = args.null_prob  # Null marginal probability for the test bit
     direction = 'left' if null_prob > max(alt_probs) else 'right'
@@ -276,8 +271,8 @@ if __name__ == "__main__":
 
     plot_type = args.plot_type
 
-    filename = f'{new_folder_path}/{plot_type}.parquet'
-    filename_metadata = f'{new_folder_path}/metadata/{plot_type}.parquet'
+    filename = f'{new_folder_path}/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
+    filename_metadata = f'{new_folder_path}/metadata/nullprob_{null_prob}_altprob_trial_subset_{plot_type}.parquet'
             
 
     match plot_type:
@@ -308,6 +303,10 @@ if __name__ == "__main__":
             alpha_targeting_values = [1]
             alpha_engagement_values = [1]
             epsilons = [(0.1,f_metrics_dp_ep01)]
+        case "private_only":
+            alpha_targeting_values = [0.6]
+            alpha_engagement_values = [0.2]
+            epsilons = [(0.1,f_metrics_dp_ep01)]
 
     if not args.plots_only:
         metadata_df = produceMetadataDataframe(adA, adB,
@@ -318,20 +317,19 @@ if __name__ == "__main__":
                                                 epsilons=epsilons)
         metadata_df.to_parquet(filename_metadata, engine='pyarrow', compression='snappy')
         combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
-        power_df = compute_power_df(metadata_df, combo, alt_probs=alt_probs, campaign_size=campaign_size)
         produceSampleComplexity(
             campaign, adA, adB, website1, website2,
             filename=filename,
             filename_metadata=filename_metadata,
             trials=trials,
+            trial_start=args.trial_start,
             campaign_size=campaign_size, 
             null_prob=null_prob, 
             alpha_targeting_values=alpha_targeting_values,
             alpha_engagement_values=alpha_engagement_values, 
             epsilons=epsilons,
             direction=direction,
-            alt_probs=alt_probs,
-            power_df=power_df
+            alt_probs=alt_probs
         )
 
     clicks_df = pd.read_parquet(filename, engine='pyarrow')

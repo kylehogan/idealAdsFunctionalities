@@ -1,32 +1,45 @@
 #!/bin/bash
 
-# Bash script to run distinguishing_game.py for all plot types
-# Usage: ./reproduce_plots.sh [--clean] [--small] [--cores N]
+# Bash script to run distinguishing_game.py for specified plot types
+# Usage: ./reproduce_plots.sh [--clean] [--small] [--cores N] [plot_type1 plot_type2 ...]
 
-PLOT_TYPES=("private_v_nonprivate" "targeting" "epsilon" "engagement")
 SCRIPT="distinguishing_game.py"
 
 CLEAN_FLAG=""
 SMALL_FLAG=""
 CORES=8
+PLOT_TYPES=()
 
-for arg in "$@"
-do
-    if [ "$arg" == "--clean" ]; then
-        CLEAN_FLAG="--clean"
-    fi
-    if [ "$arg" == "--small" ]; then
-        SMALL_FLAG="--trials 100"
-    fi
-    if [[ "$arg" == --cores* ]]; then
-        CORES="${arg#*=}"
-        # Support both --cores=4 and --cores 4
-        if [ "$CORES" == "--cores" ]; then
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --clean)
+            CLEAN_FLAG="--clean"
             shift
-            CORES="$1"
-        fi
-    fi
+            ;;
+        --small)
+            SMALL_FLAG="--trials 100"
+            shift
+            ;;
+        --cores)
+            CORES="$2"
+            shift 2
+            ;;
+        --cores=*)
+            CORES="${1#*=}"
+            shift
+            ;;
+        *)
+            PLOT_TYPES+=("$1")
+            shift
+            ;;
+    esac
 done
+
+# Default plot types if none specified
+if [ ${#PLOT_TYPES[@]} -eq 0 ]; then
+    PLOT_TYPES=("private_v_nonprivate" "targeting" "epsilon" "engagement")
+fi
 
 for plot_type in "${PLOT_TYPES[@]}"
 do

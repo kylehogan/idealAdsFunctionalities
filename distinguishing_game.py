@@ -1,5 +1,6 @@
 import bindata as bnd
 import numpy as np
+import itertools
 from parameterizing_funcs import f_attribution, f_targeting, f_browsing, f_engagement, f_metrics, close, f_metrics_dp_ep001, f_metrics_dp_ep01, f_metrics_dp_ep1
 from adTypes import Advertisement, Website, Campaign
 from idealFunctionalities.idealAdsEcosystem import AdsEcosystem
@@ -17,8 +18,87 @@ from os import makedirs, path, listdir
 from collections import defaultdict
 from plot_distinguishing_game import plotNumSamples
 import shutil
-from sequential_distinguishing_game import produceMetadataDataframe
-import re
+
+def produceMetadataDataframe(adA, adB,  
+                                null_prob=0.1, 
+                                alt_probs = [0.25, 0.5, 0.75], 
+                                alpha_targeting_values = [0.1,0.5,0.9,1], 
+                                alpha_engagement_values = [0.1,0.5,0.9,1],
+                                epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]):
+    # Generate all boolean arrays of length 3
+    all_users = list(itertools.product([False, True], repeat=3))
+
+    margprobEco1 = [0.2, 0.5, null_prob]
+
+    corr = np.array([[1., -0.25, -0.0625],
+                    [-0.25,   1.,  0.25],
+                    [-0.0625, 0.25, 1.]])
+    n = 100000 #for pr dist of users
+    commonprob_eco1 = bnd.bincorr2commonprob(margprob=margprobEco1, bincorr=corr)
+
+    multiindex = pd.MultiIndex.from_product(
+        [alt_probs,
+            list(set(alpha_targeting_values)),
+            list(set(alpha_engagement_values))],
+        names=['margprob', 'alpha_targeting', 'alpha_engagement']
+    )
+
+    metadata_df = pd.DataFrame(index=multiindex, columns=['tvd', "conversionProbAdA", "conversionProbAdA_null"])
+
+    #do eco1 once to compute necessary probabilities:
+    user_dist_eco1 = bnd.rmvbin(margprob=np.diag(commonprob_eco1), 
+                            commonprob=commonprob_eco1, N=n)
+
+    unique_users, counts = np.unique(user_dist_eco1, axis=0, return_counts=True)
+    userProb_eco1 = defaultdict(float)
+    userProb_eco1.update(dict(zip(map(tuple, unique_users), counts/n)))
+
+    combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
+
+    for alt_prob in alt_probs:
+        margprobEco2 = [0.2, 0.5, alt_prob]
+
+        commonprob_eco2 = bnd.bincorr2commonprob(margprob=margprobEco2, bincorr=corr)
+
+        user_dist_eco2 = bnd.rmvbin(margprob=np.diag(commonprob_eco2), 
+                                commonprob=commonprob_eco2, N=n)
+
+        unique_users, counts = np.unique(user_dist_eco2, axis=0, return_counts=True)
+        userProb_eco2 = defaultdict(float)
+        userProb_eco2.update(dict(zip(map(tuple, unique_users), counts/n)))
+
+        for alpha_targeting, alpha_engagement, _ in combo:
+            totalUserProbEco1 = 0
+            totalConvProbEco1 = 0
+            totalUserProbEco2 = 0
+            totalConvProbEco2 = 0
+            total_variation_distance = 0
+
+            for user in all_users:
+                prUser_eco1 = userProb_eco1[user]
+                totalUserProbEco1 += prUser_eco1
+                prUser_eco2 = userProb_eco2[user]
+                totalUserProbEco2 += prUser_eco2
+
+                closeA_targeting = close(adA.targetAudience, user)
+                closeB_targeting = close(adB.targetAudience, user)
+                epsilon_targeting = closeA_targeting-closeB_targeting
+                prShowA = (1+alpha_targeting*epsilon_targeting)/2
+
+                close_engagement = close(adA.content, user)
+                prClickA = alpha_engagement * close_engagement
+
+                prConvertA_eco1 = prUser_eco1 * prShowA * prClickA
+                prConvertA_eco2 = prUser_eco2 * prShowA * prClickA
+                totalConvProbEco1 += prConvertA_eco1
+                totalConvProbEco2 += prConvertA_eco2
+                total_variation_distance += abs(prUser_eco1 - prUser_eco2)
+
+                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'tvd'] = total_variation_distance
+                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA'] = totalConvProbEco2
+                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA_null'] = totalConvProbEco1
+
+    return metadata_df
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             metadata_df = None,
@@ -274,15 +354,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Produce samples and plot complexity")
     parser.add_argument("--plot_type", help="private_v_nonprivate, targeting, epsilon, or engagement", default='private_v_nonprivate')
     parser.add_argument("--alt_probs", help="marginal probabilities for D1 (D0 has pr=0.9). format as a list of floats like '[0.5,0.6,0.7,0.8]'", default= '[0.5,0.6,0.7,0.8,0.825,0.85,0.875]', type=lambda s: [float(item) for item in s.strip('[]').split(',')])
-    parser.add_argument("--trials", help="number of trials to run", default=500, type=int)
-    parser.add_argument("--cores", help="number of trials to run", default=8, type=int)
+    parser.add_argument("--trials", help="number of trials to run", default=1000, type=int)
+    parser.add_argument("--cores", help="number of cores to use", default=8, type=int)
     parser.add_argument("--plots_only", help="only produce plots and not samples", action='store_true')
     parser.add_argument("--show_st_dev", help="show standard deviation on plot", action='store_true')
     parser.add_argument("--trial_start", help="where to start the trial index (default 0)", default=0, type=int)
     parser.add_argument("--num_chunks", help="number of chunks to divide trials into for parallel processing (default 16)", default=16, type=int)
     parser.add_argument("--null_prob", help="null marginal probability (default 0.9)", default=0.9, type=float)
     parser.add_argument("--clean", help="remove previous data for plot type", action='store_true')
-    parser.add_argument("--campaign_size", help="how many users in campaign (max num samples)", default=100000, type=int)
+    parser.add_argument("--campaign_size", help="how many users in campaign (max num samples)", default=1000000, type=int)
 
     args = parser.parse_args()
 

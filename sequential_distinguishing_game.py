@@ -14,89 +14,10 @@ import argparse
 from os import makedirs, path, listdir
 from collections import defaultdict
 import shutil
-from plot_distinguishing_game import plotNumSamples, visualize_sample_complexity_df
+from plot_distinguishing_game import plotNumSamples
 from binomial_plots import plot_binomial_power_curve_subplots, plot_binomial_overlay_subplots
+from distinguishing_game import produceMetadataDataframe
 
-def produceMetadataDataframe(adA, adB,  
-                                null_prob=0.1, 
-                                alt_probs = [0.25, 0.5, 0.75], 
-                                alpha_targeting_values = [0.1,0.5,0.9,1], 
-                                alpha_engagement_values = [0.1,0.5,0.9,1],
-                                epsilons = [(0,f_metrics), (0.01,f_metrics_dp_ep001), (0.1,f_metrics_dp_ep01), (1,f_metrics_dp_ep1)]):
-    # Generate all boolean arrays of length 3
-    all_users = list(itertools.product([False, True], repeat=3))
-
-    margprobEco1 = [0.2, 0.5, null_prob]
-
-    corr = np.array([[1., -0.25, -0.0625],
-                    [-0.25,   1.,  0.25],
-                    [-0.0625, 0.25, 1.]])
-    n = 100000 #for pr dist of users
-    commonprob_eco1 = bnd.bincorr2commonprob(margprob=margprobEco1, bincorr=corr)
-
-    multiindex = pd.MultiIndex.from_product(
-        [alt_probs,
-            list(set(alpha_targeting_values)),
-            list(set(alpha_engagement_values))],
-        names=['margprob', 'alpha_targeting', 'alpha_engagement']
-    )
-
-    metadata_df = pd.DataFrame(index=multiindex, columns=['tvd', "conversionProbAdA", "conversionProbAdA_null"])
-
-    #do eco1 once to compute necessary probabilities:
-    user_dist_eco1 = bnd.rmvbin(margprob=np.diag(commonprob_eco1), 
-                            commonprob=commonprob_eco1, N=n)
-
-    unique_users, counts = np.unique(user_dist_eco1, axis=0, return_counts=True)
-    userProb_eco1 = defaultdict(float)
-    userProb_eco1.update(dict(zip(map(tuple, unique_users), counts/n)))
-
-    combo = list(zip(alpha_targeting_values,alpha_engagement_values,epsilons))
-
-    for alt_prob in alt_probs:
-        margprobEco2 = [0.2, 0.5, alt_prob]
-
-        commonprob_eco2 = bnd.bincorr2commonprob(margprob=margprobEco2, bincorr=corr)
-
-        user_dist_eco2 = bnd.rmvbin(margprob=np.diag(commonprob_eco2), 
-                                commonprob=commonprob_eco2, N=n)
-
-        unique_users, counts = np.unique(user_dist_eco2, axis=0, return_counts=True)
-        userProb_eco2 = defaultdict(float)
-        userProb_eco2.update(dict(zip(map(tuple, unique_users), counts/n)))
-
-        for alpha_targeting, alpha_engagement, _ in combo:
-            totalUserProbEco1 = 0
-            totalConvProbEco1 = 0
-            totalUserProbEco2 = 0
-            totalConvProbEco2 = 0
-            total_variation_distance = 0
-
-            for user in all_users:
-                prUser_eco1 = userProb_eco1[user]
-                totalUserProbEco1 += prUser_eco1
-                prUser_eco2 = userProb_eco2[user]
-                totalUserProbEco2 += prUser_eco2
-
-                closeA_targeting = close(adA.targetAudience, user)
-                closeB_targeting = close(adB.targetAudience, user)
-                epsilon_targeting = closeA_targeting-closeB_targeting
-                prShowA = (1+alpha_targeting*epsilon_targeting)/2
-
-                close_engagement = close(adA.content, user)
-                prClickA = alpha_engagement * close_engagement
-
-                prConvertA_eco1 = prUser_eco1 * prShowA * prClickA
-                prConvertA_eco2 = prUser_eco2 * prShowA * prClickA
-                totalConvProbEco1 += prConvertA_eco1
-                totalConvProbEco2 += prConvertA_eco2
-                total_variation_distance += abs(prUser_eco1 - prUser_eco2)
-
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'tvd'] = total_variation_distance
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA'] = totalConvProbEco2
-                metadata_df.loc[(alt_prob, alpha_targeting, alpha_engagement), 'conversionProbAdA_null'] = totalConvProbEco1
-
-    return metadata_df
 
 def produceSampleComplexity(campaign, adA, adB, website1, website2,
                                             filename='',

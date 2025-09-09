@@ -1,3 +1,3 @@
 [submodule "bindata"]
 	path = bindata
-	url = git@github.com:kylehogan/bindata.git
+	url = https://github.com/kylehogan/bindata.git

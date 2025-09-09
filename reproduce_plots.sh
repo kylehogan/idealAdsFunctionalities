@@ -48,11 +48,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Default plot types if none specified
-if [ ${#PLOT_TYPES[@]} -eq 0 ]; then
-    PLOT_TYPES=("private_v_nonprivate" "targeting" "epsilon" "engagement")
-fi
-
 for plot_type in "${PLOT_TYPES[@]}"
 do
     # Always clean unless --plots-only is set
@@ -60,6 +55,15 @@ do
     if [ -z "$PLOTS_ONLY_FLAG" ]; then
         CLEAN_FLAG="--clean"
     fi
-    echo "Running: " $SCRIPT "--plot_type" $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG "--cores" $CORES
-    python $SCRIPT $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES --plot_type $plot_type 
+
+    # Set trials to 100 for private_v_nonprivate or epsilon
+    TRIALS_FLAG=""
+    if [[ "$plot_type" == "private_v_nonprivate" || "$plot_type" == "epsilon" ]]; then
+        TRIALS_FLAG="--trials 100"
+    else
+        TRIALS_FLAG="$SMALL_FLAG"
+    fi
+
+    echo "Running: $SCRIPT --plot_type $plot_type $CLEAN_FLAG $TRIALS_FLAG $PLOTS_ONLY_FLAG --cores $CORES"
+    python $SCRIPT $CLEAN_FLAG $TRIALS_FLAG $PLOTS_ONLY_FLAG --cores $CORES --plot_type $plot_type 
 done

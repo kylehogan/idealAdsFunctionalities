@@ -1,18 +1,18 @@
 #!/bin/bash
 
 # Bash script to run distinguishing_game.py for specified plot types
-# Usage: ./reproduce_plots.sh [--clean] [--small] [--cores N] [plot_type1 plot_type2 ...]
+# Usage: ./reproduce_plots.sh [--small] [--plots-only] [--cores N] [plot_type1 plot_type2 ...]
 # Options:
-#   --clean         Remove previous data for each plot type before running
 #   --small         Use small number of trials for quick runs
+#   --plots-only    Only generate plots using existing data (do not rerun experiments)
 #   --cores N       Number of CPU cores to use (default: 8)
 #   plot_type       One or more plot types to run: targeting, engagement, epsilon, private_v_nonprivate (default: all)
 #   --help          Show this help message and exit
 
 SCRIPT="distinguishing_game.py"
 
-CLEAN_FLAG=""
 SMALL_FLAG=""
+PLOTS_ONLY_FLAG=""
 CORES=8
 PLOT_TYPES=()
 
@@ -25,12 +25,12 @@ fi
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --clean)
-            CLEAN_FLAG="--clean"
-            shift
-            ;;
         --small)
             SMALL_FLAG="--trials 100"
+            shift
+            ;;
+        --plots-only)
+            PLOTS_ONLY_FLAG="--plots_only"
             shift
             ;;
         --cores)
@@ -55,6 +55,11 @@ fi
 
 for plot_type in "${PLOT_TYPES[@]}"
 do
-    echo "Running plot_type: $plot_type $CLEAN_FLAG $SMALL_FLAG --cores $CORES"
-    python $SCRIPT --plot_type $plot_type $CLEAN_FLAG $SMALL_FLAG --cores $CORES
+    # Always clean unless --plots-only is set
+    CLEAN_FLAG=""
+    if [ -z "$PLOTS_ONLY_FLAG" ]; then
+        CLEAN_FLAG="--clean"
+    fi
+    echo "Running plot_type: $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES"
+    python $SCRIPT --plot_type $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES
 done

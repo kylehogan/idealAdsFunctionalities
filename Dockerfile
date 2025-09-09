@@ -6,6 +6,8 @@ WORKDIR /workspace
 # Copy the project files
 COPY . /workspace
 
+RUN chmod +x reproduce_plots.sh
+
 # Create the conda environment named 'ads'
 RUN conda env create -f environment.yml
 
@@ -18,5 +20,6 @@ ENV CONDA_DEFAULT_ENV=ads
 
 # Set entrypoint to bash so user can run scripts interactively
 ENTRYPOINT ["/bin/bash"]
+
 
 

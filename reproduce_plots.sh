@@ -26,7 +26,7 @@ fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --small)
-            SMALL_FLAG="--trials 100"
+            SMALL_FLAG="--trials 10"
             shift
             ;;
         --plots-only)
@@ -60,6 +60,6 @@ do
     if [ -z "$PLOTS_ONLY_FLAG" ]; then
         CLEAN_FLAG="--clean"
     fi
-    echo "Running plot_type: $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES"
-    python $SCRIPT --plot_type $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES
+    echo "Running: " $SCRIPT "--plot_type" $plot_type $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG "--cores" $CORES
+    python $SCRIPT $CLEAN_FLAG $SMALL_FLAG $PLOTS_ONLY_FLAG --cores $CORES --plot_type $plot_type 
 done

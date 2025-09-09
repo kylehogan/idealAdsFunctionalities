@@ -309,7 +309,12 @@ def runParallelSampleProductionByTrials(campaign, adA, adB, website1, website2,
                                                 epsilons=epsilons)
             metadata_df.to_parquet(filename_metadata.replace("altprob_trial_subset", f"altprob{alt_prob}"), engine='pyarrow', compression='snappy')
             for trial_chunk in trial_chunks:
-                filename_chunk = filename.replace("altprob_trial_subset", f"altprob{alt_prob}_trial_subset{trial_chunk[0]}_{trial_chunk[-1]}")
+                if len(trial_chunk) == 0:
+                    continue
+                filename_chunk = filename.replace(
+                    "altprob_trial_subset",
+                    f"altprob{alt_prob}_trial_subset{trial_chunk[0]}_{trial_chunk[-1]}"
+                )
                 futures.append(
                     executor.submit(
                         process_chunk,

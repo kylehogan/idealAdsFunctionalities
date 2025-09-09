@@ -8,15 +8,8 @@ COPY . /workspace
 
 RUN chmod +x reproduce_plots.sh
 
-# Create the conda environment named 'ads'
-RUN conda env create -f environment.yml
-
-# Activate the environment and ensure it's used by default
-SHELL ["conda", "run", "-n", "ads", "/bin/bash", "-c"]
-
-# Set environment variables for Python and Conda
-ENV PATH=/opt/conda/envs/ads/bin:$PATH
-ENV CONDA_DEFAULT_ENV=ads
+RUN conda env update --file ./environment.yml && \
+    conda clean -tipy
 
 # Set entrypoint to bash so user can run scripts interactively
 ENTRYPOINT ["/bin/bash"]

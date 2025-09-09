@@ -7,6 +7,7 @@ dependencies:
   - numpy=1.26.4=py312hc5e2394_0
   - pandas=2.2.2=py312h526ad5a_0
   - pip=25.1=pyhc872135_2
+  - pyarrow=19.0.0=py312h6a678d5_1
   - python=3.12.4=h5148396_1
   - scipy=1.13.1=py312hc5e2394_0
   - seaborn=0.13.2=py312h06a4308_2

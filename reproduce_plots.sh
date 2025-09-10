@@ -48,6 +48,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Default plot types if none specified
+if [ ${#PLOT_TYPES[@]} -eq 0 ]; then
+    PLOT_TYPES=("private_v_nonprivate" "targeting" "epsilon" "engagement")
+fi
+
 for plot_type in "${PLOT_TYPES[@]}"
 do
     # Always clean unless --plots-only is set

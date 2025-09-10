@@ -93,83 +93,104 @@ This should reproduce the "Private vs. Nonprivate" plot as it appears in the pap
 Then, run the "small" version of one of the plots. This will only run 10 trials and should produce a plot that is not missing any lines or datapoints and generally increases in sample complexity as the alpha-epsilon value and total variation distance decrease. You can adjust the number of cores with `--cores N` (requires approximately 15-20 minutes with 8 cores).
 
 ```bash
- ./reproduce_plots.sh --clean --small engagement
+ ./reproduce_plots.sh --small engagement
 ```
 
 ## Artifact Evaluation
 
-This section should include all the steps required to evaluate your artifact's
-functionality and validate your paper's key results and claims. Therefore,
-highlight your paper's main results and claims in the first subsection. And
-describe the experiments that support your claims in the subsection after that.
 
 ### Main Results and Claims
 
-List all your paper's results and claims that are supported by your submitted
-artifacts.
+#### Main Result 1: Relating advertising privacy protections to increased ad campaign size
 
-#### Main Result 1: Name
+The main result of our empirical evaluation is to demonstrate that adding privacy protections to an advertising ecosystem increases the campaign size required to learn information about those campaign's audiences, but does not _prevent_ this learning.
 
-Describe the results in 1 to 3 sentences. Mention what the independent and
-dependent variables are; independent variables are the ones on the x-axes of
-your figures, whereas the dependent ones are on the y-axes. By varying the
-independent variable (e.g., file size) in a given manner (e.g., linearly), we
-expect to see trends in the dependent variable (e.g., runtime, communication
-overhead) vary in another manner (e.g., exponentially). Refer to the related
-sections, figures, and/or tables in your paper and reference the experiments
-that support this result/claim. See example below.
+We represent this by several parameters for our advertising functionalities that allow us to tune the impact of privatizing that functionality along with a distinguishing game over the ads ecosystem run on different underlying user distributions.
 
-#### Main Result 2: Example Name
+Decreasing the total variation distance (x-axis) of the underling user distributions naturally increases the sample complexity (y-axis) of distinguishing the output of an advertising campaign run over those distributions. 
 
-Our paper claims that when varying the file size linearly, the runtime also
-increases linearly. This claim is reproducible by executing our
-[Experiment 2](#experiment-2-example-name). In this experiment, we change the
-file size linearly, from 2KB to 24KB, at intervals of 2KB each, and we show that
-the runtime also increases linearly, reaching at most 1ms. We report these
-results in "Figure 1a" and "Table 3" (Column 3 or Row 2) of our paper.
+First, we show the impact of of privatizing advertising by combining these parameters in [Experiment 1](#experiment-1-private-vs-nonprivate-sample-complexity).
+
+We then show the impact of differential privacy at different epsilon values on the sample complexity of distinguishing in [Experiment 2](#experiment-2-differentially-private-metrics).
+
+We also run several experiments demonstrating the additional impact of reducing targeting and engagement accuracy by decreasing our alpha-engagement in [Experiment 3](#experiment-3-engagement) and alpha-targeting parameters in [Experiment 4](#experiment-4-private-targeting).
 
 ### Experiments
-List each experiment to execute to reproduce your results. Describe:
- - How to execute it in detailed steps.
- - What the expected result is.
- - How long it takes to execute in human and compute times (approximately).
- - How much space it consumes on disk (approximately) (omit if <10GB).
- - Which claim and results does it support, and how.
+ We list the methods to produce each individual plot from the paper below, but all the plots can be reproduced together as well. The default number of cores is 8 and can be changes using the `--cores N` flag. 
+ 
+ Note that [Experiment 1](#experiment-1-private-vs-nonprivate-sample-complexity) and [Experiment 2](#experiment-2-differentially-private-metrics) are particularly computationally intensive and can take several days with approximately 60 cores.
 
+ None of the experiments require more than a few minutes of human involvement.
+
+ Each experiment outputs a dataset `combined.parquet`, metadata for that dataset `combined_metadata.parquet`, and a plot `pval_left_[name].png` in the corresponding folder in the `plots/` directory. 
+ The focus of this work is the trends in the distinguishing complexity more so than the exact sample complexity values and the trends produced by these experiments should match those in the paper (unless produced with the `--small` flag).
+
+To rerun all experiments and reproduce plots as shown in the paper:
+ ```bash
+./reproduce_plots.sh 
+```
+
+To reproduce plots as shown in the paper using the data from the paper, without rerunning the experiments:
+ ```bash
+./reproduce_plots.sh --plots-only
+```
+
+To produce "small" versions of all plots by rerunning the experiments for a minimal number of trials (10 trials):
+ ```bash
+./reproduce_plots.sh --small
+```
+
+[Experiment 1: Private vs. Nonprivate Sample Complexity](#experiment-1-private-vs-nonprivate-sample-complexity)
 #### Experiment 1: Private vs. Nonprivate Sample Complexity
-- Time: replace with estimate in human-minutes/hours + compute-minutes/hours.
-- Storage: replace with estimate for disk space used (omit if <10GB).
+This experiment reproduces Figure 8 from the paper and compares the sample complexity of our distinguishing game on an example private vs. non-private advertising ecosystem to the baseline sample complexity of directly distinguishing the two underlying distributions.
 
-Provide a short explanation of the experiment and expected results. Describe
-thoroughly the steps to perform the experiment and to collect and organize the
-results as expected from your paper (see example below). Use code segments to
-simplify the workflow, as follows.
+You can adjust the number of cores with `--cores N` (default is 8). It is computationally intensive and will by default run 100 trials, taking several days on 60 cores. 
+The `--small` flag can be used to run only 10 trials and the `--plots-only` flag can be used to reproduce the plot using the example data without rerunning the experiment.
 
-```bash
-python3 experiment_1.py
-```
-
-#### Experiment 2: Example Name
-
-- Time: 10 human-minutes + 3 compute-hours
-- Storage: 20GB
-
-This example experiment reproduces
-[Main Result 2: Example Name](#main-result-2-example-name), the following script
-will run the simulation automatically with the different parameters specified in
-the paper. (You may run the following command from the example Docker image.)
+To run: 
 
 ```bash
-python3 main.py
+./reproduce_plots.sh private_v_nonprivate
 ```
 
-Results from this example experiment will be aggregated over several iterations
-by the script and output directly in raw format along with variances and
-standard deviations in the `output-folder/` directory. You will also find there
-the plots for "Figure 1a" in `.pdf` format and the table for "Table 3" in `.tex`
-format. These can be directly compared to the results reported in the paper, and
-should not quantitatively vary by more than 5% from expected results.
+#### Experiment 2: Differentially Private Metrics
 
+This experiment reproduces Figure 10 from the paper and demonstrates the impact of decreasing the epsilon value for the differentially private metrics functionality.
+
+You can adjust the number of cores with `--cores N` (default is 8). It is computationally intensive and will by default run 100 trials, taking several days on 60 cores. 
+The `--small` flag can be used to run only 10 trials and the `--plots-only` flag can be used to reproduce the plot using the example data without rerunning the experiment.
+
+To run: 
+
+```bash
+./reproduce_plots.sh epsilon
+```
+
+#### Experiment 3: Engagement
+
+This experiment reproduces Figure 11 from the paper and demonstrates the impact of decreasing the alpha-engagement parameter, or how likely users are to engage with ads at all. This is _not_ a privacy parameter, but allows for tuning click rates to match desired values, e.g. from a specific ads dataset.
+
+You can adjust the number of cores with `--cores N` (default is 8). It is computationally intensive and will by default run 100 trials, taking several days on 60 cores. 
+The `--small` flag can be used to run only 10 trials and the `--plots-only` flag can be used to reproduce the plot using the example data without rerunning the experiment.
+
+To run: 
+
+```bash
+./reproduce_plots.sh engagement
+```
+
+#### Experiment 4: Private Targeting
+
+This experiment reproduces Figure 12 from the paper and demonstrates the impact of decreasing the alpha-targeting parameter, or how likely users are to receive a more relevant ad over a less relevant one. It represents the "accuracy" of targeting and private targeting functionalities will tend to be less likely to show the most relevant ad due to restricted or noisy user data.
+
+You can adjust the number of cores with `--cores N` (default is 8). It is computationally intensive and will by default run 100 trials, taking several days on 60 cores. 
+The `--small` flag can be used to run only 10 trials and the `--plots-only` flag can be used to reproduce the plot using the example data without rerunning the experiment.
+
+To run: 
+
+```bash
+./reproduce_plots.sh targeting
+```
 
 ## Limitations 
 
@@ -180,7 +201,8 @@ Fully reproducing these plots will likely take more time/cores than most people 
 ## Notes on Reusability 
 
 While we used basic parameterizing functionalities and simple distributions in evaluating this work, both aspects are highly customizable.
-
 For example, an alternative targeting parameterizing functionalities could be a click predictor model.
 
 Additionally, more complex distributions over users could incorporate correlations over specific features of interest and align with the use of those features during targeting or engagement.
+
+Finally, while we provide `reproduce_plots.sh` to run `distinguishing_game.py` and produce the plots as they appear in the paper, `distinguishing_game.py` accept more arguments than are supported by `reproduce_plots.sh` and could be used to run larger numbers of trials or different total variation distances, etc.
